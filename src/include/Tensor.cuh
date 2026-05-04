@@ -5,7 +5,7 @@
 #include <cuda_runtime.h>
 #include <curand_kernel.h>
 
-namespace GPU
+namespace Tensor
 {
     __global__ void add_kernel(float *A, float *B, float *C, int N)
     {
