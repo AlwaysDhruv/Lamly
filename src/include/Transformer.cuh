@@ -29,7 +29,11 @@ class Transformer
 
 	vector<vector<float>> wq;
 	vector<vector<float>> wk;
-	vector<vector<float>> wv;	
+	vector<vector<float>> wv;
+
+	vector<vector<vector<float>>> q;
+	vector<vector<vector<float>>> k;
+	vector<vector<vector<float>>> v;	
 public:
 	
 	Transformer(vector<long long>& ids)
@@ -71,7 +75,7 @@ public:
 
 		embed_x.reserve(xy_size);
 		
-		for (int i = 0; i < xy_size; ++i) embed_x.push_back(Tensor::add(embed_mat[token_x[i]], pos_mat[i]));
+		for (int i = 0; i < xy_size; ++i) embed_x.push_back(Tensor::matadd(embed_mat[token_x[i]], pos_mat[i]));
 
 		X.reserve(num_seq);
 
@@ -95,9 +99,20 @@ public:
 		wk = Tensor::random(embed_size, embed_size);
 		wv = Tensor::random(embed_size, embed_size);
 
-		Debug::shape(wq);
-		Debug::shape(wk);
-		Debug::shape(wv);
+		q.reserve(num_seq);
+		k.reserve(num_seq);
+		v.reserve(num_seq);
+
+		for (int i = 0; i < num_seq; ++i)
+		{
+			q.push_back(Tensor::matmul(X[i], wq));
+			k.push_back(Tensor::matmul(X[i], wk));
+			v.push_back(Tensor::matmul(X[i], wv));
+		}
+
+		Debug::shape(q);
+		Debug::shape(k);
+		Debug::shape(v);
 	}
 };
 #endif
