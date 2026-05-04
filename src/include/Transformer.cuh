@@ -16,8 +16,20 @@ class Transformer
 	int context_len;
 	int num_seq;
 	int xy_size;
+	
 	vector<long long> token_ids;
+	vector<long long> token_x;
+	vector<long long> token_y;
+	
+	vector<vector<float>> embed_mat;
+	vector<vector<float>> pos_mat;
+	vector<vector<float>> embed_x;
 
+	vector<vector<vector<float>>> X;
+
+	vector<vector<float>> wq;
+	vector<vector<float>> wk;
+	vector<vector<float>> wv;	
 public:
 	
 	Transformer(vector<long long>& ids)
@@ -40,11 +52,8 @@ public:
 		else cout << "config.ini Have Problem...." << endl;
 	}
 
-	void ready()
+	void input_embedding()
 	{
-		vector<long long> token_x;
-		vector<long long> token_y;
-		
 		token_x.reserve(xy_size);
 		token_y.reserve(xy_size);
 
@@ -54,29 +63,41 @@ public:
 			token_y.push_back(token_ids[j]);	
 		}
 
-		auto embed_mat = Tensor::random(vocab_size, embed_size);
-		auto pos_mat = Tensor::random(xy_size ,embed_size);
+		embed_mat.reserve(vocab_size);
+		pos_mat.reserve(xy_size);
 
-		vector<vector<float>> embed_x;
+		embed_mat = Tensor::random(vocab_size, embed_size);
+		pos_mat = Tensor::random(xy_size, embed_size);
+
 		embed_x.reserve(xy_size);
 		
 		for (int i = 0; i < xy_size; ++i) embed_x.push_back(Tensor::add(embed_mat[token_x[i]], pos_mat[i]));
 
-		vector<vector<vector<float>>> X;
 		X.reserve(num_seq);
 
 		for (int i = 0; i < num_seq; ++i)
 		{
 			vector<vector<float>> temp;
 			temp.reserve(seq_len + i);
-			for (int j = 0 + i; j < seq_len + i; ++j)
-			{
-				temp.push_back(embed_x[j]);
-			}
+			
+			for (int j = 0 + i; j < seq_len + i; ++j) temp.push_back(embed_x[j]);
 			X.push_back(temp);
 		}
-		Debug::display(X);
+	}
+
+	void linear_projection()
+	{
+		wq.reserve(embed_size);
+		wk.reserve(embed_size);
+		wv.reserve(embed_size);
+
+		wq = Tensor::random(embed_size, embed_size);
+		wk = Tensor::random(embed_size, embed_size);
+		wv = Tensor::random(embed_size, embed_size);
+
+		Debug::shape(wq);
+		Debug::shape(wk);
+		Debug::shape(wv);
 	}
 };
-
 #endif
