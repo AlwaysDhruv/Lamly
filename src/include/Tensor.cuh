@@ -41,6 +41,23 @@ namespace Tensor
         }
     }
 
+    __global__ void random3d_kernel(int *data, curandState *states,
+                                   int d1, int d2, int d3)
+    {
+        int i = blockIdx.x * blockDim.x + threadIdx.x;
+
+        int N = d1 * d2 * d3;
+
+        if (i < N)
+        {
+            curand_init(1234, i, 0, &states[i]);
+
+            // generate 0 or 1
+            float r = curand_uniform(&states[i]);
+            data[i] = (r > 0.5f) ? 1 : 0;
+        }
+    }
+
     inline std::vector<vector<float>> random(int N1, int N2)
     {
         int N = N1 * N2;
@@ -161,6 +178,43 @@ namespace Tensor
                 C[i][j] = flatC[i * colsB + j];
 
         return C;
+    }
+
+    inline std::vector<std::vector<std::vector<int>>>
+    dropout_mask(int d1, int d2, int d3)
+    {
+        int N = d1 * d2 * d3;
+
+        int *d_data;
+        curandState *d_states;
+
+        cudaMalloc(&d_data, N * sizeof(int));
+        cudaMalloc(&d_states, N * sizeof(curandState));
+
+        int threads = 256;
+        int blocks = (N + threads - 1) / threads;
+
+        random3d_kernel<<<blocks, threads>>>(d_data, d_states, d1, d2, d3);
+
+        std::vector<int> flat(N);
+        cudaMemcpy(flat.data(), d_data, N * sizeof(int), cudaMemcpyDeviceToHost);
+
+        cudaFree(d_data);
+        cudaFree(d_states);
+
+        // reshape to 3D
+        std::vector<std::vector<std::vector<int>>> result(
+            d1, std::vector<std::vector<int>>(d2, std::vector<int>(d3)));
+
+        for (int i = 0; i < d1; i++)
+            for (int j = 0; j < d2; j++)
+                for (int k = 0; k < d3; k++)
+                {
+                    int idx = (i * d2 + j) * d3 + k;
+                    result[i][j][k] = flat[idx];
+                }
+
+        return result;
     }    
 }
 
