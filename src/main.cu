@@ -13,7 +13,7 @@ int main(int argc, char const *argv[])
 	vector<long long> token_ids;
 
 	//tk.fit("../data/test.txt", 72);
-	tk.encoding("../data/test2.txt", tokens, token_ids);
+	tk.encoding("../data/test.txt", tokens, token_ids);
 
 	Transformer tr(token_ids);
 

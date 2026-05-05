@@ -17,6 +17,7 @@ class Transformer
 	int num_seq;
 	int xy_size;
 	float dropout_rate;
+	float dropout_prob;
 	
 	vector<long long> token_ids;
 	vector<long long> token_x;
@@ -51,6 +52,7 @@ public:
 			batch_size = stoi(in["GPT"]["Batch_size"]);
 			seq_len = stoi(in["GPT"]["Seq_len"]);
 			dropout_rate = stof(in["GPT"]["Dropout_rate"]);
+			dropout_prob = 1 - dropout_rate;
 			token_ids = ids;
 			context_len = token_ids.size();
 			xy_size = context_len - 1;
@@ -91,11 +93,13 @@ public:
 			for (int j = 0 + i; j < seq_len + i; ++j) temp.push_back(embed_x[j]);
 			X.push_back(temp);
 		}
-		
+		dropout_mask.reserve(num_seq);
 		dropout_mask = Tensor::dropout_mask(num_seq, seq_len, embed_size);
+		
+		X_input.reserve(num_seq);
 		X_input = Tensor::dropout(X, dropout_mask, dropout_prob);
 
-		Debug::display(X_input);		
+		Debug::shape(X_input);
 	}
 
 	void linear_projection()

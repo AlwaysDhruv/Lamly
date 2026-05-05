@@ -228,7 +228,7 @@ namespace Tensor
         return result;
     }
     
-    inline std::vector<std::vector<std::vector<float>>> dropout_gpu(
+    inline std::vector<std::vector<std::vector<float>>> dropout(
         const std::vector<std::vector<std::vector<float>>>& v1,
         const std::vector<std::vector<std::vector<int>>>& v2,
         float prob)
