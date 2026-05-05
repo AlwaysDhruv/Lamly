@@ -58,6 +58,17 @@ namespace Tensor
         }
     }
 
+    __global__ void dropout_kernel(float *v1, int *v2, float *out,
+                                   int N, float prob)
+    {
+        int i = blockIdx.x * blockDim.x + threadIdx.x;
+
+        if (i < N)
+        {
+            out[i] = (v1[i] * v2[i]) / prob;
+        }
+    }
+
     inline std::vector<vector<float>> random(int N1, int N2)
     {
         int N = N1 * N2;
@@ -215,6 +226,68 @@ namespace Tensor
                 }
 
         return result;
+    }
+    
+    inline std::vector<std::vector<std::vector<float>>> dropout_gpu(
+        const std::vector<std::vector<std::vector<float>>>& v1,
+        const std::vector<std::vector<std::vector<int>>>& v2,
+        float prob)
+    {
+        int d1 = v1.size();
+        int d2 = v1[0].size();
+        int d3 = v1[0][0].size();
+
+        int N = d1 * d2 * d3;
+
+        // flatten
+        std::vector<float> flat1(N);
+        std::vector<int> flat2(N);
+
+        for (int i = 0; i < d1; i++)
+            for (int j = 0; j < d2; j++)
+                for (int k = 0; k < d3; k++)
+                {
+                    int idx = (i * d2 + j) * d3 + k;
+                    flat1[idx] = v1[i][j][k];
+                    flat2[idx] = v2[i][j][k];
+                }
+
+        // device memory
+        float *d_v1, *d_out;
+        int *d_v2;
+
+        cudaMalloc(&d_v1, N * sizeof(float));
+        cudaMalloc(&d_v2, N * sizeof(int));
+        cudaMalloc(&d_out, N * sizeof(float));
+
+        cudaMemcpy(d_v1, flat1.data(), N*sizeof(float), cudaMemcpyHostToDevice);
+        cudaMemcpy(d_v2, flat2.data(), N*sizeof(int), cudaMemcpyHostToDevice);
+
+        int threads = 256;
+        int blocks = (N + threads - 1) / threads;
+
+        dropout_kernel<<<blocks, threads>>>(d_v1, d_v2, d_out, N, prob);
+
+        std::vector<float> flat_out(N);
+        cudaMemcpy(flat_out.data(), d_out, N*sizeof(float), cudaMemcpyDeviceToHost);
+
+        cudaFree(d_v1);
+        cudaFree(d_v2);
+        cudaFree(d_out);
+
+        // reshape back to 3D
+        std::vector<std::vector<std::vector<float>>> ans(
+            d1, std::vector<std::vector<float>>(d2, std::vector<float>(d3)));
+
+        for (int i = 0; i < d1; i++)
+            for (int j = 0; j < d2; j++)
+                for (int k = 0; k < d3; k++)
+                {
+                    int idx = (i * d2 + j) * d3 + k;
+                    ans[i][j][k] = flat_out[idx];
+                }
+
+        return ans;
     }    
 }
 

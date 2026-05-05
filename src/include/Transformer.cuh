@@ -27,6 +27,7 @@ class Transformer
 	vector<vector<float>> embed_x;
 
 	vector<vector<vector<float>>> X;
+	vector<vector<vector<float>>> X_input;
 	vector<vector<vector<int>>> dropout_mask;
 
 	vector<vector<float>> wq;
@@ -90,8 +91,11 @@ public:
 			for (int j = 0 + i; j < seq_len + i; ++j) temp.push_back(embed_x[j]);
 			X.push_back(temp);
 		}
+		
 		dropout_mask = Tensor::dropout_mask(num_seq, seq_len, embed_size);
-		Debug::display(dropout_mask);		
+		X_input = Tensor::dropout(X, dropout_mask, dropout_prob);
+
+		Debug::display(X_input);		
 	}
 
 	void linear_projection()
