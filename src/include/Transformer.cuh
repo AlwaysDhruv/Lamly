@@ -16,6 +16,7 @@ class Transformer
 	int context_len;
 	int num_seq;
 	int xy_size;
+	int head_size;
 	float dropout_rate;
 	float dropout_prob;
 	
@@ -51,6 +52,7 @@ public:
 			vocab_size = stoi(in["GPT"]["Vocab_size"]);
 			batch_size = stoi(in["GPT"]["Batch_size"]);
 			seq_len = stoi(in["GPT"]["Seq_len"]);
+			head_size = stoi(in["GPT"]["Head_size"]);
 			dropout_rate = stof(in["GPT"]["Dropout_rate"]);
 			dropout_prob = 1 - dropout_rate;
 			token_ids = ids;
@@ -122,10 +124,6 @@ public:
 			k.push_back(Tensor::matmul(X[i], wk));
 			v.push_back(Tensor::matmul(X[i], wv));
 		}
-
-		Debug::shape(q);
-		Debug::shape(k);
-		Debug::shape(v);
 	}
 };
 #endif
