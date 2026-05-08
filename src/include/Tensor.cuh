@@ -288,6 +288,39 @@ namespace Tensor
                 }
 
         return ans;
+    }
+    
+    vector<vector<vector<vector<float>>>> head_spliting(vector<vector<vector<float>>>& v1, int head_size)
+    {
+        int num_seq = v1.size();
+        int seq_len = v1[0].size();
+        int embed_size = v1[0][0].size();
+        int head_dim = embed_size / head_size;
+
+        vector<vector<vector<vector<float>>>> h;
+        h.reserve(num_seq);
+
+        for (int i = 0; i < num_seq; ++i)
+        {
+            vector<vector<vector<float>>> temp2;
+            temp2.reserve(seq_len);
+            for (int j = 0; j < seq_len; ++j)
+            {
+                vector<vector<float>> temp1;
+                temp1.reserve(embed_size);      
+                for (int k = 0; k < embed_size; k+=head_dim)
+                {
+                    vector<float> temp;
+                    temp.reserve(head_dim);
+
+                    for (int l = k; l < k + head_dim; ++l) temp.push_back(v1[i][j][l]);
+                    temp1.push_back(temp);
+                }
+                temp2.push_back(temp1);
+            }
+            h.push_back(temp2);
+        }
+        return h;
     }    
 }
 

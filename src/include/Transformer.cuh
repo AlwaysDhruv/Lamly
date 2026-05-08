@@ -38,7 +38,11 @@ class Transformer
 
 	vector<vector<vector<float>>> q;
 	vector<vector<vector<float>>> k;
-	vector<vector<vector<float>>> v;	
+	vector<vector<vector<float>>> v;
+
+	vector<vector<vector<vector<float>>>> q_h;
+	vector<vector<vector<vector<float>>>> k_h;
+	vector<vector<vector<vector<float>>>> v_h;
 public:
 	
 	Transformer(vector<long long>& ids)
@@ -124,6 +128,17 @@ public:
 			k.push_back(Tensor::matmul(X[i], wk));
 			v.push_back(Tensor::matmul(X[i], wv));
 		}
+		q_h.reserve(num_seq);
+		k_h.reserve(num_seq);
+		v_h.reserve(num_seq);
+
+		q_h = Tensor::head_spliting(q, head_size);
+		k_h = Tensor::head_spliting(k, head_size);
+		v_h = Tensor::head_spliting(v, head_size);
+
+		Debug::shape(q_h);
+		Debug::shape(k_h);
+		Debug::shape(v_h);		
 	}
 };
 #endif
