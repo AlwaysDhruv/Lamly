@@ -140,5 +140,19 @@ public:
 		Debug::shape(k_h);
 		Debug::shape(v_h);		
 	}
+
+	void block()
+	{
+		gamma.reserve(embed_size);
+		beta.reserve(embed_size);
+		for (int i = 0; i < embed_size; ++i)
+		{
+			gamma.push_back(1);
+			beta.push_back(0);
+		}
+		Debug::shape(gamma);
+		Debug::shape(beta);
+	}
+
 };
 #endif

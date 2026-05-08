@@ -17,7 +17,10 @@ int main(int argc, char const *argv[])
 	Transformer tr(token_ids);
 
 	tr.input_embedding();
+	
 	tr.linear_projection();
 
+	tr.block();
+	
 	return 0;
 }
