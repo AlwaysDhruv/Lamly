@@ -43,6 +43,9 @@ class Transformer
 	vector<vector<vector<vector<float>>>> q_h;
 	vector<vector<vector<vector<float>>>> k_h;
 	vector<vector<vector<vector<float>>>> v_h;
+
+	vector<float> gamma;
+	vector<float> beta;	
 public:
 	
 	Transformer(vector<long long>& ids)
