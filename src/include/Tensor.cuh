@@ -321,6 +321,34 @@ namespace Tensor
             h.push_back(temp2);
         }
         return h;
+    }
+    
+    vector<vector<vector<float>>> transpose(vector<vector<vector<float>>>& v)
+    {
+        int dim1 = v.size();
+        int dim2 = v[0].size();
+        int dim3 = v[0][0].size();
+
+        vector<vector<vector<float>>> trans;
+        trans.reserve(dim1);
+
+        for (int i = 0; i < dim1; ++i)
+        {
+            vector<vector<float>> temp1;
+            temp1.reserve(dim3);
+            for (int j = 0; j < dim2; ++j)
+            {
+                vector<float> temp;
+                temp.reserve(dim2);
+                for (int k = 0; k < dim3; ++k)
+                {
+                    temp.push_back(v[j][i][k]);
+                }
+                temp1.push_back(temp);
+            }
+            trans.push_back(temp1);
+        }
+        return trans;
     }    
 }
 
