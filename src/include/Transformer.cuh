@@ -150,8 +150,9 @@ public:
 			gamma.push_back(1);
 			beta.push_back(0);
 		}
-		Debug::shape(gamma);
-		Debug::shape(beta);
+
+		Tensor::layer_norm(X_input, gamma, beta);
+		Debug::display(X_input);		
 	}
 
 };

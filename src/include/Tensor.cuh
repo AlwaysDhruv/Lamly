@@ -69,6 +69,53 @@ namespace Tensor
         }
     }
 
+    __global__ void layernorm_kernel(
+        float *v,
+        float *gamma,
+        float *beta,
+        int batch_size,
+        int seq_len,
+        int embed_size)
+    {
+        int idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+        int total = batch_size * seq_len;
+
+        if (idx < total)
+        {
+            int offset = idx * embed_size;
+
+            // mean
+            float mean = 0.0f;
+
+            for (int k = 0; k < embed_size; k++)
+                mean += v[offset + k];
+
+            mean /= embed_size;
+
+            // variance
+            float variance = 0.0f;
+
+            for (int k = 0; k < embed_size; k++)
+            {
+                float diff = v[offset + k] - mean;
+                variance += diff * diff;
+            }
+
+            variance /= embed_size;
+
+            float std = sqrtf(variance + 1e-5f);
+
+            // normalize + affine
+            for (int k = 0; k < embed_size; k++)
+            {
+                v[offset + k] =
+                    gamma[k] * ((v[offset + k] - mean) / std)
+                    + beta[k];
+            }
+        }
+    }
+
     inline std::vector<vector<float>> random(int N1, int N2)
     {
         int N = N1 * N2;
@@ -349,7 +396,74 @@ namespace Tensor
             trans.push_back(temp1);
         }
         return trans;
-    }    
+    }
+
+    inline void layer_norm(
+        std::vector<std::vector<std::vector<float>>>& v,
+        std::vector<float>& gamma,
+        std::vector<float>& beta)
+    {
+        int batch_size = v.size();
+        int seq_len = v[0].size();
+        int embed_size = v[0][0].size();
+
+        int total = batch_size * seq_len * embed_size;
+
+        // flatten
+        std::vector<float> flat(total);
+
+        for (int i = 0; i < batch_size; i++)
+            for (int j = 0; j < seq_len; j++)
+                for (int k = 0; k < embed_size; k++)
+                {
+                    int idx = (i * seq_len + j) * embed_size + k;
+                    flat[idx] = v[i][j][k];
+                }
+
+        // device memory
+        float *d_v, *d_gamma, *d_beta;
+
+        cudaMalloc(&d_v, total * sizeof(float));
+        cudaMalloc(&d_gamma, embed_size * sizeof(float));
+        cudaMalloc(&d_beta, embed_size * sizeof(float));
+
+        cudaMemcpy(d_v, flat.data(),
+                   total * sizeof(float),
+                   cudaMemcpyHostToDevice);
+
+        cudaMemcpy(d_gamma, gamma.data(),
+                   embed_size * sizeof(float),
+                   cudaMemcpyHostToDevice);
+
+        cudaMemcpy(d_beta, beta.data(),
+                   embed_size * sizeof(float),
+                   cudaMemcpyHostToDevice);
+
+        int threads = 256;
+        int blocks = (batch_size * seq_len + threads - 1) / threads;
+
+        layernorm_kernel<<<blocks, threads>>>(
+            d_v, d_gamma, d_beta,
+            batch_size, seq_len, embed_size);
+
+        cudaMemcpy(flat.data(),
+                   d_v,
+                   total * sizeof(float),
+                   cudaMemcpyDeviceToHost);
+
+        cudaFree(d_v);
+        cudaFree(d_gamma);
+        cudaFree(d_beta);
+
+        // reshape back
+        for (int i = 0; i < batch_size; i++)
+            for (int j = 0; j < seq_len; j++)
+                for (int k = 0; k < embed_size; k++)
+                {
+                    int idx = (i * seq_len + j) * embed_size + k;
+                    v[i][j][k] = flat[idx];
+                }
+    }
 }
 
 #endif
