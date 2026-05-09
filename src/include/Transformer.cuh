@@ -127,9 +127,9 @@ public:
 
 		for (int i = 0; i < num_seq; ++i)
 		{
-			q.push_back(Tensor::matmul(X[i], wq));
-			k.push_back(Tensor::matmul(X[i], wk));
-			v.push_back(Tensor::matmul(X[i], wv));
+			q.push_back(Tensor::matmul(X_input[i], wq));
+			k.push_back(Tensor::matmul(X_input[i], wk));
+			v.push_back(Tensor::matmul(X_input[i], wv));
 		}
 		q_h.reserve(num_seq);
 		k_h.reserve(num_seq);
@@ -138,10 +138,6 @@ public:
 		q_h = Tensor::head_spliting(q, head_size);
 		k_h = Tensor::head_spliting(k, head_size);
 		v_h = Tensor::head_spliting(v, head_size);
-
-		Debug::shape(q_h);
-		Debug::shape(k_h);
-		Debug::shape(v_h);		
 	}
 
 	void block()
@@ -155,7 +151,8 @@ public:
 		}
 
 		Tensor::layer_norm(X_input, gamma, beta);
-		Debug::display(X_input);		
+
+		Debug::display(X_input);
 	}
 
 };

@@ -71,86 +71,290 @@ namespace Tensor
 
     __global__ void layernorm_kernel(
         float *v,
-        float *gamma,
-        float *beta,
+        const float *gamma,
+        const float *beta,
         int batch_size,
         int seq_len,
         int embed_size)
     {
-        int idx = blockIdx.x * blockDim.x + threadIdx.x;
+        int idx =
+            blockIdx.x * blockDim.x + threadIdx.x;
 
-        int total = batch_size * seq_len;
+        int total_tokens =
+            batch_size * seq_len;
 
-        if (idx < total)
+        if (idx >= total_tokens || embed_size <= 0)
+            return;
+
+        int offset = idx * embed_size;
+
+        // mean
+        float mean = 0.0f;
+
+        for (int k = 0; k < embed_size; k++)
         {
-            int offset = idx * embed_size;
+            mean += v[offset + k];
+        }
 
-            // mean
-            float mean = 0.0f;
+        mean /= (float)embed_size;
 
-            for (int k = 0; k < embed_size; k++)
-                mean += v[offset + k];
+        // variance
+        float variance = 0.0f;
 
-            mean /= embed_size;
+        for (int k = 0; k < embed_size; k++)
+        {
+            float diff =
+                v[offset + k] - mean;
 
-            // variance
-            float variance = 0.0f;
+            variance += diff * diff;
+        }
 
-            for (int k = 0; k < embed_size; k++)
+        variance /= (float)embed_size;
+
+        // numerical stability
+        float inv_std =
+            rsqrtf(variance + 1e-5f);
+
+        // normalize + affine
+        for (int k = 0; k < embed_size; k++)
+        {
+            float normalized =
+                (v[offset + k] - mean) * inv_std;
+
+            v[offset + k] =
+                gamma[k] * normalized + beta[k];
+        }
+    }
+
+    inline void check_cuda(cudaError_t err)
+    {
+        if (err != cudaSuccess)
+        {
+            std::cout
+                << "CUDA Error: "
+                << cudaGetErrorString(err)
+                << std::endl;
+
+            exit(EXIT_FAILURE);
+        }
+    }
+
+    inline void layer_norm(
+        std::vector<std::vector<std::vector<float>>>& v,
+        std::vector<float>& gamma,
+        std::vector<float>& beta)
+    {
+        int batch_size = v.size();
+
+        if (batch_size == 0)
+            return;
+
+        int seq_len = v[0].size();
+
+        if (seq_len == 0)
+            return;
+
+        int embed_size = v[0][0].size();
+
+        if (embed_size == 0)
+            return;
+
+        if (gamma.size() != embed_size ||
+            beta.size() != embed_size)
+        {
+            std::cout
+                << "gamma/beta size mismatch"
+                << std::endl;
+
+            return;
+        }
+
+        int total =
+            batch_size * seq_len * embed_size;
+
+        // flatten
+        std::vector<float> flat(total);
+
+        for (int i = 0; i < batch_size; i++)
+        {
+            for (int j = 0; j < seq_len; j++)
             {
-                float diff = v[offset + k] - mean;
-                variance += diff * diff;
+                for (int k = 0; k < embed_size; k++)
+                {
+                    int idx =
+                        (i * seq_len + j) * embed_size + k;
+
+                    flat[idx] = v[i][j][k];
+                }
             }
+        }
 
-            variance /= embed_size;
+        float *d_v = nullptr;
+        float *d_gamma = nullptr;
+        float *d_beta = nullptr;
 
-            float std = sqrtf(variance);
+        check_cuda(
+            cudaMalloc(&d_v,
+                       total * sizeof(float)));
 
-            // normalize + affine
-            for (int k = 0; k < embed_size; k++)
+        check_cuda(
+            cudaMalloc(&d_gamma,
+                       embed_size * sizeof(float)));
+
+        check_cuda(
+            cudaMalloc(&d_beta,
+                       embed_size * sizeof(float)));
+
+        check_cuda(
+            cudaMemcpy(
+                d_v,
+                flat.data(),
+                total * sizeof(float),
+                cudaMemcpyHostToDevice));
+
+        check_cuda(
+            cudaMemcpy(
+                d_gamma,
+                gamma.data(),
+                embed_size * sizeof(float),
+                cudaMemcpyHostToDevice));
+
+        check_cuda(
+            cudaMemcpy(
+                d_beta,
+                beta.data(),
+                embed_size * sizeof(float),
+                cudaMemcpyHostToDevice));
+
+        int total_tokens =
+            batch_size * seq_len;
+
+        int threads = 256;
+
+        int blocks =
+            (total_tokens + threads - 1) / threads;
+
+        layernorm_kernel<<<blocks, threads>>>(
+            d_v,
+            d_gamma,
+            d_beta,
+            batch_size,
+            seq_len,
+            embed_size);
+
+        check_cuda(cudaGetLastError());
+        check_cuda(cudaDeviceSynchronize());
+
+        check_cuda(
+            cudaMemcpy(
+                flat.data(),
+                d_v,
+                total * sizeof(float),
+                cudaMemcpyDeviceToHost));
+
+        cudaFree(d_v);
+        cudaFree(d_gamma);
+        cudaFree(d_beta);
+
+        // reshape back
+        for (int i = 0; i < batch_size; i++)
+        {
+            for (int j = 0; j < seq_len; j++)
             {
-                v[offset + k] =
-                    gamma[k] * ((v[offset + k] - mean) / std)
-                    + beta[k];
+                for (int k = 0; k < embed_size; k++)
+                {
+                    int idx =
+                        (i * seq_len + j) * embed_size + k;
+
+                    v[i][j][k] = flat[idx];
+                }
             }
         }
     }
 
-    inline std::vector<vector<float>> random(int N1, int N2)
+    inline std::vector<std::vector<float>>
+    random(int N1, int N2)
     {
-        int N = N1 * N2;
-        float *d_data;
-        curandState *d_states;
+        std::vector<std::vector<float>> matrix(
+            N1,
+            std::vector<float>(N2));
 
-        cudaMalloc(&d_data, N * sizeof(float));
-        cudaMalloc(&d_states, N * sizeof(curandState));
+        // host memory
+        std::vector<float> h_data(N1 * N2);
 
-        int threads = 256;
-        int blocks = (N + threads - 1) / threads;
+        // fill random values
+        for (int i = 0; i < N1 * N2; i++)
+        {
+            h_data[i] =
+                static_cast<float>(rand()) / RAND_MAX;
+        }
 
-        random_kernel<<<blocks, threads>>>(d_data, d_states, N);
+        // device memory
+        float *d_data = nullptr;
 
-        vector<float> h_data(N);
-        cudaMemcpy(h_data.data(), d_data, N * sizeof(float), cudaMemcpyDeviceToHost);
+        cudaError_t err;
+
+        err = cudaMalloc(
+            &d_data,
+            N1 * N2 * sizeof(float));
+
+        if (err != cudaSuccess)
+        {
+            std::cout
+                << "cudaMalloc failed: "
+                << cudaGetErrorString(err)
+                << std::endl;
+
+            exit(EXIT_FAILURE);
+        }
+
+        err = cudaMemcpy(
+            d_data,
+            h_data.data(),
+            N1 * N2 * sizeof(float),
+            cudaMemcpyHostToDevice);
+
+        if (err != cudaSuccess)
+        {
+            std::cout
+                << "cudaMemcpy H2D failed: "
+                << cudaGetErrorString(err)
+                << std::endl;
+
+            exit(EXIT_FAILURE);
+        }
+
+        // copy back
+        err = cudaMemcpy(
+            h_data.data(),
+            d_data,
+            N1 * N2 * sizeof(float),
+            cudaMemcpyDeviceToHost);
+
+        if (err != cudaSuccess)
+        {
+            std::cout
+                << "cudaMemcpy D2H failed: "
+                << cudaGetErrorString(err)
+                << std::endl;
+
+            exit(EXIT_FAILURE);
+        }
 
         cudaFree(d_data);
-        cudaFree(d_states);
 
-        vector<vector<float>> weigths;
-        weigths.reserve(N1);
-
-        for(int i = 0; i < N1; ++i)
+        // reshape correctly
+        for (int i = 0; i < N1; i++)
         {
-            vector<float> temp;
-            temp.reserve(N2);
+            for (int j = 0; j < N2; j++)
+            {
+                int index = i * N2 + j;
 
-            int index = N1 * N2;
-
-            for(int j = index; j < index + N2; ++j) temp.push_back(h_data[j]);
-
-            weigths.push_back(temp);
+                matrix[i][j] = h_data[index];
+            }
         }
-        return weigths;
+
+        return matrix;
     }
 
     inline std::vector<float> matadd(const std::vector<float>& A,
@@ -396,73 +600,6 @@ namespace Tensor
             trans.push_back(temp1);
         }
         return trans;
-    }
-
-    inline void layer_norm(
-        std::vector<std::vector<std::vector<float>>>& v,
-        std::vector<float>& gamma,
-        std::vector<float>& beta)
-    {
-        int batch_size = v.size();
-        int seq_len = v[0].size();
-        int embed_size = v[0][0].size();
-
-        int total = batch_size * seq_len * embed_size;
-
-        // flatten
-        std::vector<float> flat(total);
-
-        for (int i = 0; i < batch_size; i++)
-            for (int j = 0; j < seq_len; j++)
-                for (int k = 0; k < embed_size; k++)
-                {
-                    int idx = (i * seq_len + j) * embed_size + k;
-                    flat[idx] = v[i][j][k];
-                }
-
-        // device memory
-        float *d_v, *d_gamma, *d_beta;
-
-        cudaMalloc(&d_v, total * sizeof(float));
-        cudaMalloc(&d_gamma, embed_size * sizeof(float));
-        cudaMalloc(&d_beta, embed_size * sizeof(float));
-
-        cudaMemcpy(d_v, flat.data(),
-                   total * sizeof(float),
-                   cudaMemcpyHostToDevice);
-
-        cudaMemcpy(d_gamma, gamma.data(),
-                   embed_size * sizeof(float),
-                   cudaMemcpyHostToDevice);
-
-        cudaMemcpy(d_beta, beta.data(),
-                   embed_size * sizeof(float),
-                   cudaMemcpyHostToDevice);
-
-        int threads = 256;
-        int blocks = (batch_size * seq_len + threads - 1) / threads;
-
-        layernorm_kernel<<<blocks, threads>>>(
-            d_v, d_gamma, d_beta,
-            batch_size, seq_len, embed_size);
-
-        cudaMemcpy(flat.data(),
-                   d_v,
-                   total * sizeof(float),
-                   cudaMemcpyDeviceToHost);
-
-        cudaFree(d_v);
-        cudaFree(d_gamma);
-        cudaFree(d_beta);
-
-        // reshape back
-        for (int i = 0; i < batch_size; i++)
-            for (int j = 0; j < seq_len; j++)
-                for (int k = 0; k < embed_size; k++)
-                {
-                    int idx = (i * seq_len + j) * embed_size + k;
-                    v[i][j][k] = flat[idx];
-                }
     }
 }
 
