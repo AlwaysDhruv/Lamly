@@ -104,7 +104,7 @@ namespace Tensor
 
             variance /= embed_size;
 
-            float std = sqrtf(variance + 1e-5f);
+            float std = sqrtf(variance);
 
             // normalize + affine
             for (int k = 0; k < embed_size; k++)

@@ -150,8 +150,8 @@ public:
 		beta.reserve(embed_size);
 		for (int i = 0; i < embed_size; ++i)
 		{
-			gamma.push_back(1);
-			beta.push_back(0);
+			gamma.push_back(1.0f);
+			beta.push_back(0.0f);
 		}
 
 		Tensor::layer_norm(X_input, gamma, beta);
