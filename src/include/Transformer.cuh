@@ -5,6 +5,7 @@
 #include <fstream>
 #include "Tensor.cuh"
 #include "Display.hpp"
+#include "Attension.hpp"
 #include "../utils/ini.h"
 
 class Transformer
@@ -146,6 +147,18 @@ public:
 		q_h = Tensor::head_spliting(q, head_size);
 		k_h = Tensor::head_spliting(k, head_size);
 		v_h = Tensor::head_spliting(v, head_size);
+		
+		for (int i = 0; i < num_seq; ++i)
+		{
+			q_h[i] = Tensor::transpose(q_h[i]);
+			k_h[i] = Tensor::transpose(k_h[i]);
+			v_h[i] = Tensor::transpose(v_h[i]);
+		}
 	}
+
+	void forward_pass()
+	{
+		Attension::score(q_h, k_h, v_h);
+	}		
 };
 #endif
