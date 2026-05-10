@@ -107,8 +107,16 @@ public:
 		
 		X_input.reserve(num_seq);
 		X_input = Tensor::dropout(X, dropout_mask, dropout_prob);
+		
+		gamma.reserve(embed_size);
+		beta.reserve(embed_size);
+		for (int i = 0; i < embed_size; ++i)
+		{
+			gamma.push_back(1.0f);
+			beta.push_back(0.0f);
+		}
 
-		Debug::shape(X_input);
+		Tensor::layer_norm(X_input, gamma, beta);
 	}
 
 	void linear_projection()
@@ -139,21 +147,5 @@ public:
 		k_h = Tensor::head_spliting(k, head_size);
 		v_h = Tensor::head_spliting(v, head_size);
 	}
-
-	void block()
-	{
-		gamma.reserve(embed_size);
-		beta.reserve(embed_size);
-		for (int i = 0; i < embed_size; ++i)
-		{
-			gamma.push_back(1.0f);
-			beta.push_back(0.0f);
-		}
-
-		Tensor::layer_norm(X_input, gamma, beta);
-
-		Debug::display(X_input);
-	}
-
 };
 #endif
