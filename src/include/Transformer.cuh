@@ -5,7 +5,7 @@
 #include <fstream>
 #include "Tensor.cuh"
 #include "Display.hpp"
-#include "Attension.hpp"
+#include "Attension.cuh"
 #include "../utils/ini.h"
 
 class Transformer

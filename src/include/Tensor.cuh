@@ -126,6 +126,31 @@ namespace Tensor
         }
     }
 
+    __global__ void dot_kernel(
+        float *A,
+        float *B,
+        float *C,
+        int rowsA,
+        int colsA,
+        int colsB)
+    {
+        int row = blockIdx.y * blockDim.y + threadIdx.y;
+        int col = blockIdx.x * blockDim.x + threadIdx.x;
+
+        if (row < rowsA && col < colsB)
+        {
+            float sum = 0.0f;
+
+            for (int k = 0; k < colsA; k++)
+            {
+                sum += A[row * colsA + k]
+                     * B[k * colsB + col];
+            }
+
+            C[row * colsB + col] = sum;
+        }
+    }
+
     inline void check_cuda(cudaError_t err)
     {
         if (err != cudaSuccess)
@@ -656,7 +681,84 @@ namespace Tensor
                 else attension_score[i][k] *= scale;
             }
         }
-    }    
+    }
+
+    inline std::vector<std::vector<float>> dot_product(
+        const std::vector<std::vector<float>>& A,
+        const std::vector<std::vector<float>>& B)
+    {
+        int rowsA = A.size();
+        int colsA = A[0].size();
+
+        int rowsB = B.size();
+        int colsB = B[0].size();
+
+        if (colsA != rowsB)
+            throw std::runtime_error("Shape mismatch");
+
+        // flatten
+        std::vector<float> flatA(rowsA * colsA);
+        std::vector<float> flatB(rowsB * colsB);
+
+        for (int i = 0; i < rowsA; i++)
+            for (int j = 0; j < colsA; j++)
+                flatA[i * colsA + j] = A[i][j];
+
+        for (int i = 0; i < rowsB; i++)
+            for (int j = 0; j < colsB; j++)
+                flatB[i * colsB + j] = B[i][j];
+
+        // GPU memory
+        float *d_A, *d_B, *d_C;
+
+        cudaMalloc(&d_A, flatA.size() * sizeof(float));
+        cudaMalloc(&d_B, flatB.size() * sizeof(float));
+        cudaMalloc(&d_C, rowsA * colsB * sizeof(float));
+
+        cudaMemcpy(d_A, flatA.data(),
+                   flatA.size() * sizeof(float),
+                   cudaMemcpyHostToDevice);
+
+        cudaMemcpy(d_B, flatB.data(),
+                   flatB.size() * sizeof(float),
+                   cudaMemcpyHostToDevice);
+
+        dim3 threads(16, 16);
+
+        dim3 blocks(
+            (colsB + 15) / 16,
+            (rowsA + 15) / 16
+        );
+
+        dot_kernel<<<blocks, threads>>>(
+            d_A, d_B, d_C,
+            rowsA, colsA, colsB
+        );
+
+        // copy back
+        std::vector<float> flatC(rowsA * colsB);
+
+        cudaMemcpy(flatC.data(),
+                   d_C,
+                   flatC.size() * sizeof(float),
+                   cudaMemcpyDeviceToHost);
+
+        cudaFree(d_A);
+        cudaFree(d_B);
+        cudaFree(d_C);
+
+        // reshape to 2D
+        std::vector<std::vector<float>> C(
+            rowsA,
+            std::vector<float>(colsB)
+        );
+
+        for (int i = 0; i < rowsA; i++)
+            for (int j = 0; j < colsB; j++)
+                C[i][j] = flatC[i * colsB + j];
+
+        return C;
+    }
 }
 
 #endif

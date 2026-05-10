@@ -11,7 +11,7 @@ namespace Attension
 	{
 		int batch_size = q.size();
 		int head_size = q[0].size();
-		
+		int head_dim = q[0][0][0].size();
 		float scale = sqrt(head_dim);
 
 		for (int i = 0; i < batch_size; ++i)
