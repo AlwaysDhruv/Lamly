@@ -606,24 +606,24 @@ namespace Tensor
         int dim3 = v[0][0].size();
 
         vector<vector<vector<float>>> trans;
-        trans.reserve(dim1);
+        trans.reserve(dim2);
 
-        for (int i = 0; i < dim1; ++i)
+        for (int i = 0; i < dim2; ++i)
         {
-            vector<vector<float>> temp1;
-            temp1.reserve(dim3);
-            for (int j = 0; j < dim2; ++j)
+            vector<vector<float>> temp;
+            temp.reserve(dim1);
+
+            for (int j = 0; j < dim1; ++j)
             {
-                vector<float> temp;
-                temp.reserve(dim2);
-                for (int k = 0; k < dim3; ++k)
-                {
-                    temp.push_back(v[j][i][k]);
-                }
-                temp1.push_back(temp);
+                vector<float> temp1;
+                temp1.reserve(dim3);
+
+                for (int k = 0; k < dim3; ++k) temp1.push_back(v[j][i][k]);
+                
+                temp.push_back(temp1);
             }
-            trans.push_back(temp1);
-        }
+            trans.push_back(temp);
+        }        
         return trans;
     }
 
