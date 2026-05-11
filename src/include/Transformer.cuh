@@ -162,7 +162,7 @@ public:
 	{
 		auto attension_score = Attension::score(q_h, k_h, v_h, wo);
 		
-		dropout_mask = Random::dropout_mask(num_seq, seq_len, embed_size, dropout_rate);
+		dropout_mask = Tensor::dropout_mask(num_seq, seq_len, embed_size, dropout_rate);
 		attension_score = Tensor::dropout(attension_score, dropout_mask, dropout_prob);
 
 		auto index = Tensor::matadd(attension_score, X);

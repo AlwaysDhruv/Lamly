@@ -151,31 +151,6 @@ namespace Tensor
         }
     }
 
-    __global__ void matmul_kernel(
-        float *A,
-        float *B,
-        float *C,
-        int rowsA,
-        int colsA,
-        int colsB)
-    {
-        int row = blockIdx.y * blockDim.y + threadIdx.y;
-        int col = blockIdx.x * blockDim.x + threadIdx.x;
-
-        if (row < rowsA && col < colsB)
-        {
-            float sum = 0.0f;
-
-            for (int k = 0; k < colsA; k++)
-            {
-                sum += A[row * colsA + k]
-                     * B[k * colsB + col];
-            }
-
-            C[row * colsB + col] = sum;
-        }
-    }
-
     __global__ void matadd_kernel(
         float *A,
         float *B,
@@ -807,85 +782,6 @@ namespace Tensor
         vector<float> ans;
         ans.reserve(cols * rows);
         for (int i = 0; i < cols; ++i) for (int j = 0; j < rows; ++j) ans.push_back(v[i][j]);
-        return ans;
-    }
-
-    inline std::vector<std::vector<float>> matmul(
-        std::vector<std::vector<float>>& v1,
-        std::vector<std::vector<float>>& v2)
-    {
-        int rowsA = v1.size();
-        int colsA = v1[0].size();
-
-        int rowsB = v2.size();
-        int colsB = v2[0].size();
-
-        if (colsA != rowsB)
-            throw std::runtime_error("Matrix shape mismatch");
-
-        // flatten
-        std::vector<float> flatA(rowsA * colsA);
-        std::vector<float> flatB(rowsB * colsB);
-
-        for (int i = 0; i < rowsA; i++)
-            for (int j = 0; j < colsA; j++)
-                flatA[i * colsA + j] = v1[i][j];
-
-        for (int i = 0; i < rowsB; i++)
-            for (int j = 0; j < colsB; j++)
-                flatB[i * colsB + j] = v2[i][j];
-
-        // device memory
-        float *d_A, *d_B, *d_C;
-
-        cudaMalloc(&d_A, flatA.size() * sizeof(float));
-        cudaMalloc(&d_B, flatB.size() * sizeof(float));
-        cudaMalloc(&d_C, rowsA * colsB * sizeof(float));
-
-        cudaMemcpy(d_A,
-                   flatA.data(),
-                   flatA.size() * sizeof(float),
-                   cudaMemcpyHostToDevice);
-
-        cudaMemcpy(d_B,
-                   flatB.data(),
-                   flatB.size() * sizeof(float),
-                   cudaMemcpyHostToDevice);
-
-        dim3 threads(16, 16);
-
-        dim3 blocks(
-            (colsB + 15) / 16,
-            (rowsA + 15) / 16
-        );
-
-        matmul_kernel<<<blocks, threads>>>(
-            d_A, d_B, d_C,
-            rowsA, colsA, colsB
-        );
-
-        // copy back
-        std::vector<float> flatC(rowsA * colsB);
-
-        cudaMemcpy(flatC.data(),
-                   d_C,
-                   flatC.size() * sizeof(float),
-                   cudaMemcpyDeviceToHost);
-
-        cudaFree(d_A);
-        cudaFree(d_B);
-        cudaFree(d_C);
-
-        // reshape
-        std::vector<std::vector<float>> ans(
-            rowsA,
-            std::vector<float>(colsB)
-        );
-
-        for (int i = 0; i < rowsA; i++)
-            for (int j = 0; j < colsB; j++)
-                ans[i][j] = flatC[i * colsB + j];
-
         return ans;
     }
 
