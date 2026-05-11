@@ -42,7 +42,7 @@ namespace Tensor
     }
 
     __global__ void random3d_kernel(int *data, curandState *states,
-                                   int d1, int d2, int d3)
+                                   int d1, int d2, int d3, float dropout_rate)
     {
         int i = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -54,7 +54,7 @@ namespace Tensor
 
             // generate 0 or 1
             float r = curand_uniform(&states[i]);
-            data[i] = (r > 0.5f) ? 1 : 0;
+            data[i] = (r > dropout_rate) ? 1 : 0;
         }
     }
 
@@ -468,7 +468,7 @@ namespace Tensor
     }
 
     inline std::vector<std::vector<std::vector<int>>>
-    dropout_mask(int d1, int d2, int d3)
+    dropout_mask(int d1, int d2, int d3, float dropout_rate)
     {
         int N = d1 * d2 * d3;
 
@@ -481,7 +481,7 @@ namespace Tensor
         int threads = 256;
         int blocks = (N + threads - 1) / threads;
 
-        random3d_kernel<<<blocks, threads>>>(d_data, d_states, d1, d2, d3);
+        random3d_kernel<<<blocks, threads>>>(d_data, d_states, d1, d2, d3, dropout_rate);
 
         std::vector<int> flat(N);
         cudaMemcpy(flat.data(), d_data, N * sizeof(int), cudaMemcpyDeviceToHost);
@@ -759,6 +759,16 @@ namespace Tensor
 
         return C;
     }
+    vector<float> merge_head(vector<vector<float>>& v)
+    {
+        int cols = v.size();
+        int rows = v[0].size();
+
+        vector<float> ans;
+        ans.reserve(cols * rows);
+        for (int i = 0; i < cols; ++i) for (int j = 0; j < rows; ++j) ans.push_back(v[i][j]);
+        return ans;
+    }    
 }
 
 #endif
