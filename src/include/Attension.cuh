@@ -7,7 +7,7 @@ namespace Attension
 {
 	vector<vector<vector<float>>> score(vector<vector<vector<vector<float>>>>& q,
 										vector<vector<vector<vector<float>>>>& k,
-										vector<vector<vector<vector<float>>>>& v)
+										vector<vector<vector<vector<float>>>>& v, vector<vector<float>>& wo)
 	{
 		int batch_size = q.size();
 		int head_size = q[0].size();
@@ -39,7 +39,7 @@ namespace Attension
 			vector<vector<float>> temp;
 			for (int i = 0; i < seq_len; ++i) temp.push_back(Tensor::merge_head(attension[i]));
 			
-			attension_out.push_back(temp);
+			attension_out.push_back(Tensor::matmul(temp, wo));
 		}
 		return attension_out;
 	}

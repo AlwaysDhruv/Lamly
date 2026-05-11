@@ -36,6 +36,7 @@ class Transformer
 	vector<vector<float>> wq;
 	vector<vector<float>> wk;
 	vector<vector<float>> wv;
+	vector<vector<float>> wo;
 
 	vector<vector<vector<float>>> q;
 	vector<vector<vector<float>>> k;
@@ -129,6 +130,7 @@ public:
 		wq = Tensor::random(embed_size, embed_size);
 		wk = Tensor::random(embed_size, embed_size);
 		wv = Tensor::random(embed_size, embed_size);
+		wo = Tensor::random(embed_size, embed_size);
 
 		q.reserve(num_seq);
 		k.reserve(num_seq);
@@ -158,9 +160,14 @@ public:
 
 	void forward_pass()
 	{
-		auto attension_score = Attension::score(q_h, k_h, v_h);
+		auto attension_score = Attension::score(q_h, k_h, v_h, wo);
+		
+		dropout_mask = Random::dropout_mask(num_seq, seq_len, embed_size, dropout_rate);
+		attension_score = Tensor::dropout(attension_score, dropout_mask, dropout_prob);
 
-		Debug::display(attension_score);
-	}		
+		auto index = Tensor::matadd(attension_score, X);
+
+		Debug::display(index);
+	}
 };
 #endif
