@@ -12,8 +12,12 @@ int main(int argc, char const *argv[])
 	vector<string> tokens;
 	vector<long long> token_ids;
 
+	cout << "Encoding starts for test.txt....";
+
 	tk.encoding("../data/test2.txt", tokens, token_ids);
 
+	cout << "done with " << token_ids.size() << " ids....." << endl;
+	
 	Transformer tr(token_ids);
 
 	tr.input_embedding();
