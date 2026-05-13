@@ -22,8 +22,6 @@ int main(int argc, char const *argv[])
 
 	tr.input_embedding();
 	
-	tr.linear_projection();
-	
 	tr.forward_pass();
 	
 	return 0;

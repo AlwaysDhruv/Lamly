@@ -1,6 +1,7 @@
 #ifndef ATTENSION
 #define ATTENSION
 
+#include "Function.cuh"
 using namespace std;
 
 namespace Attension
@@ -29,7 +30,7 @@ namespace Attension
 				
 				Tensor::casual_mask(score, scale);
 				
-				Tensor::softmax(score);
+				Function::softmax(score);
 
 				attension.push_back(Tensor::dot_product(score, v[i][j]));
 			}

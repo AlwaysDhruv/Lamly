@@ -6,6 +6,7 @@
 #include "Tensor.cuh"
 #include "Display.hpp"
 #include "Attension.cuh"
+#include "Linear.cuh"
 #include "../utils/ini.h"
 
 class Transformer
@@ -34,9 +35,7 @@ class Transformer
 
 	vector<vector<vector<float>>> X;
 	vector<vector<vector<float>>> X_input;
-	vector<vector<vector<float>>> dropout_mask;
 	
-
 	vector<vector<float>> wq;
 	vector<vector<float>> wk;
 	vector<vector<float>> wv;
@@ -90,12 +89,12 @@ public:
 			wo.reserve(embed_size);
 			w1.reserve(embed_size);
 			w1.reserve(hidden_size);
-			wq = Tensor::weights(embed_size, embed_size);
-			wk = Tensor::weights(embed_size, embed_size);
-			wv = Tensor::weights(embed_size, embed_size);
-			wo = Tensor::weights(embed_size, embed_size);
-			w1 = Tensor::weights(embed_size, hidden_size);
-			w2 = Tensor::weights(hidden_size, embed_size);
+			wq = Tensor::random(embed_size, embed_size);
+			wk = Tensor::random(embed_size, embed_size);
+			wv = Tensor::random(embed_size, embed_size);
+			wo = Tensor::random(embed_size, embed_size);
+			w1 = Tensor::random(embed_size, hidden_size);
+			w2 = Tensor::random(hidden_size, embed_size);
 			cout << "Done....." << endl;
 		}
 		else cout << "config.ini Have Problem...." << endl;
@@ -115,8 +114,8 @@ public:
 		embed_mat.reserve(vocab_size);
 		pos_mat.reserve(xy_size);
 
-		embed_mat = Tensor::weights(vocab_size, embed_size);
-		pos_mat = Tensor::weights(xy_size, embed_size);
+		embed_mat = Tensor::random(vocab_size, embed_size);
+		pos_mat = Tensor::random(xy_size, embed_size);
 
 		embed_x.reserve(xy_size);
 		
@@ -172,8 +171,7 @@ public:
 
 	void forward_pass()
 	{
-
-		dropout_mask = Tensor::dropout_mask(num_seq, seq_len, embed_size, dropout_rate);
+		auto dropout_mask = Tensor::dropout_mask(num_seq, seq_len, embed_size, dropout_rate);
 		X_input = Tensor::dropout(X, dropout_mask, dropout_prob);
 
 		for (int i = 0; i < block_size; ++i)
@@ -185,13 +183,11 @@ public:
 			Tensor::layer_norm(X_input, gamma, beta);
 
 			cout << "Layer_norm - 1 Done...." << endl;
-			Debug::shape(X_input);
+			
 			linear_projection(X_input);
 
 			cout << "Linear_projection Done...." << endl;
-			Debug::shape(q_h);
-			Debug::shape(k_h);
-			Debug::shape(v_h);
+
 			auto attension_score = Attension::score(q_h, k_h, v_h, wo);
 
 			cout << "Attension_score calculated Done...." << endl;
