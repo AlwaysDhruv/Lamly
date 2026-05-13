@@ -176,6 +176,8 @@ public:
 
 		for (int i = 0; i < block_size; ++i)
 		{
+			auto residual_1 = X_input;
+
 			cout << "=======================================================" << endl;
 			cout << "Block " << i + 1 << " Begining...." << endl;
 			cout << "=======================================================" << endl;
@@ -197,33 +199,33 @@ public:
 
 			cout << "Dropout - 1 Done....." << endl;
 
-			attension_score = Tensor::matadd(attension_score, X);
+			attension_score = Tensor::matadd(residual_1, attension_score);
 	
 			cout << "Residual - 1 Done...." << endl;
 
-			auto mlp_output = attension_score;
+			auto residual_2 = attension_score;
 
-			Tensor::layer_norm(mlp_output, gamma, beta);
+			Tensor::layer_norm(attension_score, gamma, beta);
 
 			cout << "Layer_norm - 2 Done...." << endl;
 
-			Linear::linear(mlp_output, w1, w2);
+			Linear::linear(attension_score, w1, w2);
 			
 			cout << "Liner_Layer Done...." << endl;
 
 			dropout_mask = Tensor::dropout_mask(num_seq, seq_len, embed_size, dropout_rate);
-			mlp_output = Tensor::dropout(mlp_output, dropout_mask, dropout_prob);
+			attension_score = Tensor::dropout(attension_score, dropout_mask, dropout_prob);
 
 			cout << "Dropout - 2 Done....." << endl;
 			
-			X_input = Tensor::matadd(attension_score, mlp_output);
+			X_input = Tensor::matadd(residual_2, attension_score);
 
 			cout << "Residual - 2 Done...." << endl;
-			
-			X = X_input;
 
 			cout << "Block " << i + 1 << " ended...." << endl;
+			
 			Debug::display(X_input[0]);
+
 			cout << "=======================================================" << endl << endl << endl;
 
 		}
