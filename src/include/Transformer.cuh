@@ -30,6 +30,7 @@ class Transformer
 	vector<long long> token_y;
 	
 	vector<vector<float>> embed_mat;
+	vector<vector<float>> embed_mat_t;
 	vector<vector<float>> pos_mat;
 	vector<vector<float>> embed_x;
 
@@ -223,12 +224,27 @@ public:
 			cout << "Residual - 2 Done...." << endl;
 
 			cout << "Block " << i + 1 << " ended...." << endl;
-			
-			Debug::display(X_input[0]);
 
 			cout << "=======================================================" << endl << endl << endl;
 
 		}
+
+		void output_stage()
+		{
+			Tensor::layer_norm(X_input, gamma, beta);
+
+			embed_mat_t.reserve(embed_size);
+			embed_mat_t = Tensor::transpose(embed_mat);
+
+			X_output.reserve(num_seq);
+			for (int i = 0; i < num_seq; ++i)
+			{
+				auto lm_head = Tensor::dot_product(X_input[i], embed_mat_t);
+				Function::softmax(lm_head);
+				X_output.push_back(lm_head);
+			}
+			Debug::display(X_output[0]);
+		}		
 	}
 };
 
