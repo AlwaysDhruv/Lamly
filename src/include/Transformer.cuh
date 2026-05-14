@@ -34,6 +34,7 @@ class Transformer
 	vector<vector<float>> pos_mat;
 	vector<vector<float>> embed_x;
 
+	vector<vector<float>> Y;
 	vector<vector<vector<float>>> X;
 	vector<vector<vector<float>>> X_input;
 	
@@ -123,14 +124,23 @@ public:
 		for (int i = 0; i < xy_size; ++i) embed_x.push_back(Tensor::matadd(embed_mat[token_x[i]], pos_mat[i]));
 
 		X.reserve(num_seq);
+		Y.reserve(num_seq);
 
 		for (int i = 0; i < num_seq; ++i)
 		{
 			vector<vector<float>> temp;
-			temp.reserve(seq_len + i);
+			vector<float> temp2;
 			
-			for (int j = 0 + i; j < seq_len + i; ++j) temp.push_back(embed_x[j]);
+			temp.reserve(seq_len + i);
+			temp2.reserve(seq_len);
+
+			for (int j = 0 + i; j < seq_len + i; ++j)
+			{
+				temp.push_back(embed_x[j]);
+				temp2.push_back(token_y[j]);
+			}
 			X.push_back(temp);
+			Y.push_back(temp2);
 		}
 	}
 
@@ -243,8 +253,20 @@ public:
 				Function::softmax(lm_head);
 				X_output.push_back(lm_head);
 			}
-			Debug::display(X_output[0]);
-		}		
+		}
+		
+		float total_loss = 0.0f;
+		for (int i = 0; i < num_seq; ++i)
+		{
+			float loss = 0.0f;
+			for (int j = 0; j < seq_len; ++j)
+			{
+				loss += -log(X_output[i][j][Y[i][j]]);
+			}
+			loss /= seq_len;
+			total_loss += loss;
+		}
+		cout << total_loss << endl;		
 	}
 };
 
