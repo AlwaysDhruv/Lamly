@@ -22,7 +22,9 @@ int main(int argc, char const *argv[])
 
 	tr.input_embedding();
 	
-	tr.forward_pass();
+	tr.Transformer_block();
+	
+	tr.output_stage();
 	
 	return 0;
 }

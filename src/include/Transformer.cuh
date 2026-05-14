@@ -37,7 +37,8 @@ class Transformer
 	vector<vector<float>> Y;
 	vector<vector<vector<float>>> X;
 	vector<vector<vector<float>>> X_input;
-	
+	vector<vector<vector<float>>> X_output;
+
 	vector<vector<float>> wq;
 	vector<vector<float>> wk;
 	vector<vector<float>> wv;
@@ -180,7 +181,7 @@ public:
 		}
 	}
 
-	void forward_pass()
+	void Transformer_block()
 	{
 		auto dropout_mask = Tensor::dropout_mask(num_seq, seq_len, embed_size, dropout_rate);
 		X_input = Tensor::dropout(X, dropout_mask, dropout_prob);
@@ -239,22 +240,22 @@ public:
 
 		}
 
-		void output_stage()
+	}	
+	void output_stage()
+	{
+		Tensor::layer_norm(X_input, gamma, beta);
+	
+		embed_mat_t.reserve(embed_size);
+		embed_mat_t = Tensor::transpose(embed_mat);
+		X_output.reserve(num_seq);
+	
+		for (int i = 0; i < num_seq; ++i)
 		{
-			Tensor::layer_norm(X_input, gamma, beta);
-
-			embed_mat_t.reserve(embed_size);
-			embed_mat_t = Tensor::transpose(embed_mat);
-
-			X_output.reserve(num_seq);
-			for (int i = 0; i < num_seq; ++i)
-			{
-				auto lm_head = Tensor::dot_product(X_input[i], embed_mat_t);
-				Function::softmax(lm_head);
-				X_output.push_back(lm_head);
-			}
+			auto lm_head = Tensor::dot_product(X_input[i], embed_mat_t);
+			Function::softmax(lm_head);
+			X_output.push_back(lm_head);
 		}
-		
+	
 		float total_loss = 0.0f;
 		for (int i = 0; i < num_seq; ++i)
 		{
@@ -266,7 +267,7 @@ public:
 			loss /= seq_len;
 			total_loss += loss;
 		}
-		cout << total_loss << endl;		
+		cout << total_loss << endl;
 	}
 };
 
