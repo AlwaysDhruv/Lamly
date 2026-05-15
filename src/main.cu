@@ -23,8 +23,6 @@ int main(int argc, char const *argv[])
 	tr.input_embedding();
 	
 	tr.Transformer_block();
-	
-	tr.output_stage();
-	
+
 	return 0;
 }
