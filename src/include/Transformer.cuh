@@ -145,7 +145,7 @@ public:
 		}
 	}
 
-	void linear_projection(vector<vector<vector<float>>>& X_in)
+	void linear_projection(vector<vector<float>>& X_in)
 	{
 		q.clear();
 		k.clear();
@@ -154,121 +154,42 @@ public:
 		k_h.clear();
 		v_h.clear();
 
-		q.reserve(num_seq);
-		k.reserve(num_seq);
-		v.reserve(num_seq);
-
-		for (int i = 0; i < num_seq; ++i)
-		{
-			q.push_back(Tensor::dot_product(X_in[i], wq));
-			k.push_back(Tensor::dot_product(X_in[i], wk));
-			v.push_back(Tensor::dot_product(X_in[i], wv));
-		}
+		q = Tensor::dot_product(X_in, wq);
+		k = Tensor::dot_product(X_in, wk);
+		v = Tensor::dot_product(X_in, wv);
 		
-		q_h.reserve(num_seq);
-		k_h.reserve(num_seq);
-		v_h.reserve(num_seq);
+		q_h.reserve(seq_len);
+		k_h.reserve(seq_len);
+		v_h.reserve(seq_len);
 
 		q_h = Tensor::head_spliting(q, head_size);
 		k_h = Tensor::head_spliting(k, head_size);
 		v_h = Tensor::head_spliting(v, head_size);
-
-		for (int i = 0; i < num_seq; ++i)
-		{
-			q_h[i] = Tensor::transpose(q_h[i]);
-			k_h[i] = Tensor::transpose(k_h[i]);
-			v_h[i] = Tensor::transpose(v_h[i]);
-		}
+		
+		q_h = Tensor::transpose(q_h);
+		k_h = Tensor::transpose(k_h);
+		v_h = Tensor::transpose(v_h);
 	}
 
 	void Transformer_block()
 	{
-		auto dropout_mask = Tensor::dropout_mask(num_seq, seq_len, embed_size, dropout_rate);
-		X_input = Tensor::dropout(X, dropout_mask, dropout_prob);
 
-		for (int i = 0; i < block_size; ++i)
-		{
-			auto residual_1 = X_input;
+		for (int batch = 0; batch < batch_size; ++batch)
+		{			
+			auto dropout_mask = Random::dropout_mask(seq_len, embed_size, dropout_rate);
 
-			cout << "=======================================================" << endl;
-			cout << "Block " << i + 1 << " Begining...." << endl;
-			cout << "=======================================================" << endl;
-			
-			Tensor::layer_norm(X_input, gamma, beta);
+			auto X_input = Tensor::dropout(X[batch], dropout_mask, dropout_prob);
 
-			cout << "Layer_norm - 1 Done...." << endl;
-			
-			linear_projection(X_input);
-
-			cout << "Linear_projection Done...." << endl;
-
-			auto attension_score = Attension::score(q_h, k_h, v_h, wo);
-
-			cout << "Attension_score calculated Done...." << endl;
-
-			dropout_mask = Tensor::dropout_mask(num_seq, seq_len, embed_size, dropout_rate);
-			attension_score = Tensor::dropout(attension_score, dropout_mask, dropout_prob);
-
-			cout << "Dropout - 1 Done....." << endl;
-
-			attension_score = Tensor::matadd(residual_1, attension_score);
-	
-			cout << "Residual - 1 Done...." << endl;
-
-			auto residual_2 = attension_score;
-
-			Tensor::layer_norm(attension_score, gamma, beta);
-
-			cout << "Layer_norm - 2 Done...." << endl;
-
-			Linear::linear(attension_score, w1, w2);
-			
-			cout << "Liner_Layer Done...." << endl;
-
-			dropout_mask = Tensor::dropout_mask(num_seq, seq_len, embed_size, dropout_rate);
-			attension_score = Tensor::dropout(attension_score, dropout_mask, dropout_prob);
-
-			cout << "Dropout - 2 Done....." << endl;
-			
-			X_input = Tensor::matadd(residual_2, attension_score);
-
-			cout << "Residual - 2 Done...." << endl;
-
-			cout << "Block " << i + 1 << " ended...." << endl;
-
-			cout << "=======================================================" << endl << endl << endl;
-
-		}
-
-	}	
-	void output_stage()
-	{
-		Tensor::layer_norm(X_input, gamma, beta);
-	
-		embed_mat_t.reserve(embed_size);
-		embed_mat_t = Tensor::transpose(embed_mat);
-		X_output.reserve(num_seq);
-	
-		for (int i = 0; i < num_seq; ++i)
-		{
-			auto lm_head = Tensor::dot_product(X_input[i], embed_mat_t);
-			Function::softmax(lm_head);
-			X_output.push_back(lm_head);
-		}
-	
-		float total_loss = 0.0f;
-		for (int i = 0; i < num_seq; ++i)
-		{
-			float loss = 0.0f;
-			for (int j = 0; j < seq_len; ++j)
+			for (int i = 0; i < block_size; ++i)
 			{
-				loss += -log(X_output[i][j][Y[i][j]]);
+				auto residual_1 = X_input;
+				
+				Tensor::layer_norm(X_input, gamma, beta);
+				linear_projection(X_input);
 			}
-			loss /= seq_len;
-			total_loss += loss;
 		}
-		cout << total_loss << endl;
-	}
+		cout << "Done" << endl;
+	}	
 };
 
 #endif

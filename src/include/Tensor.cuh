@@ -41,31 +41,42 @@ namespace Tensor
         }
     }
 
-    __global__ void random3d_kernel(int *data, curandState *states,
-                                   int d1, int d2, int d3, float dropout_rate)
+    __global__ void dropout_mask_kernel(
+        float *mask,
+        curandState *states,
+        int rows,
+        int cols,
+        float dropout_rate)
     {
         int i = blockIdx.x * blockDim.x + threadIdx.x;
 
-        int N = d1 * d2 * d3;
+        int N = rows * cols;
 
         if (i < N)
         {
             curand_init(1234, i, 0, &states[i]);
 
-            // generate 0 or 1
             float r = curand_uniform(&states[i]);
-            data[i] = (r > dropout_rate) ? 1 : 0;
+
+            mask[i] =
+                (r > dropout_rate)
+                ? 1.0f
+                : 0.0f;
         }
     }
 
-    __global__ void dropout_kernel(float *v1, int *v2, float *out,
-                                   int N, float prob)
+    __global__ void dropout_kernel(
+        float *A,
+        float *Mask,
+        float *Out,
+        int N,
+        float prob)
     {
         int i = blockIdx.x * blockDim.x + threadIdx.x;
 
         if (i < N)
         {
-            out[i] = (v1[i] * v2[i]) / prob;
+            Out[i] = (A[i] * Mask[i]) / prob;
         }
     }
 
@@ -481,134 +492,155 @@ namespace Tensor
         return C;
     }
 
-    inline std::vector<std::vector<std::vector<int>>>
-    dropout_mask(int d1, int d2, int d3, float dropout_rate)
+    inline std::vector<std::vector<float>>
+    dropout_mask(
+        int n1,
+        int n2,
+        float dropout_rate)
     {
-        int N = d1 * d2 * d3;
+        int N = n1 * n2;
 
-        int *d_data;
+        float *d_mask;
         curandState *d_states;
 
-        cudaMalloc(&d_data, N * sizeof(int));
+        cudaMalloc(&d_mask, N * sizeof(float));
         cudaMalloc(&d_states, N * sizeof(curandState));
 
         int threads = 256;
         int blocks = (N + threads - 1) / threads;
 
-        random3d_kernel<<<blocks, threads>>>(d_data, d_states, d1, d2, d3, dropout_rate);
+        dropout_mask_kernel<<<blocks, threads>>>(
+            d_mask,
+            d_states,
+            n1,
+            n2,
+            dropout_rate
+        );
 
-        std::vector<int> flat(N);
-        cudaMemcpy(flat.data(), d_data, N * sizeof(int), cudaMemcpyDeviceToHost);
+        // copy back
+        std::vector<float> flat(N);
 
-        cudaFree(d_data);
+        cudaMemcpy(flat.data(),
+                   d_mask,
+                   N * sizeof(float),
+                   cudaMemcpyDeviceToHost);
+
+        cudaFree(d_mask);
         cudaFree(d_states);
 
-        // reshape to 3D
-        std::vector<std::vector<std::vector<int>>> result(
-            d1, std::vector<std::vector<int>>(d2, std::vector<int>(d3)));
+        // reshape
+        std::vector<std::vector<float>> mask(
+            n1,
+            std::vector<float>(n2)
+        );
 
-        for (int i = 0; i < d1; i++)
-            for (int j = 0; j < d2; j++)
-                for (int k = 0; k < d3; k++)
-                {
-                    int idx = (i * d2 + j) * d3 + k;
-                    result[i][j][k] = flat[idx];
-                }
+        for (int i = 0; i < n1; i++)
+            for (int j = 0; j < n2; j++)
+                mask[i][j] = flat[i * n2 + j];
 
-        return result;
+        return mask;
     }
-    
-    inline std::vector<std::vector<std::vector<float>>> dropout(
-        const std::vector<std::vector<std::vector<float>>>& v1,
-        const std::vector<std::vector<std::vector<int>>>& v2,
+
+    inline std::vector<std::vector<float>>
+    dropout_gpu(
+        std::vector<std::vector<float>>& v1,
+        std::vector<std::vector<float>>& v2,
         float prob)
     {
-        int d1 = v1.size();
-        int d2 = v1[0].size();
-        int d3 = v1[0][0].size();
+        int rows = v1.size();
+        int cols = v1[0].size();
 
-        int N = d1 * d2 * d3;
+        int N = rows * cols;
 
         // flatten
-        std::vector<float> flat1(N);
-        std::vector<int> flat2(N);
+        std::vector<float> flatA(N);
+        std::vector<float> flatMask(N);
 
-        for (int i = 0; i < d1; i++)
-            for (int j = 0; j < d2; j++)
-                for (int k = 0; k < d3; k++)
-                {
-                    int idx = (i * d2 + j) * d3 + k;
-                    flat1[idx] = v1[i][j][k];
-                    flat2[idx] = v2[i][j][k];
-                }
+        for (int i = 0; i < rows; i++)
+            for (int j = 0; j < cols; j++)
+            {
+                int idx = i * cols + j;
+
+                flatA[idx] = v1[i][j];
+                flatMask[idx] = v2[i][j];
+            }
 
         // device memory
-        float *d_v1, *d_out;
-        int *d_v2;
+        float *d_A, *d_Mask, *d_Out;
 
-        cudaMalloc(&d_v1, N * sizeof(float));
-        cudaMalloc(&d_v2, N * sizeof(int));
-        cudaMalloc(&d_out, N * sizeof(float));
+        cudaMalloc(&d_A, N * sizeof(float));
+        cudaMalloc(&d_Mask, N * sizeof(float));
+        cudaMalloc(&d_Out, N * sizeof(float));
 
-        cudaMemcpy(d_v1, flat1.data(), N*sizeof(float), cudaMemcpyHostToDevice);
-        cudaMemcpy(d_v2, flat2.data(), N*sizeof(int), cudaMemcpyHostToDevice);
+        cudaMemcpy(d_A,
+                   flatA.data(),
+                   N * sizeof(float),
+                   cudaMemcpyHostToDevice);
+
+        cudaMemcpy(d_Mask,
+                   flatMask.data(),
+                   N * sizeof(float),
+                   cudaMemcpyHostToDevice);
 
         int threads = 256;
         int blocks = (N + threads - 1) / threads;
 
-        dropout_kernel<<<blocks, threads>>>(d_v1, d_v2, d_out, N, prob);
+        dropout_kernel<<<blocks, threads>>>(
+            d_A,
+            d_Mask,
+            d_Out,
+            N,
+            prob
+        );
 
-        std::vector<float> flat_out(N);
-        cudaMemcpy(flat_out.data(), d_out, N*sizeof(float), cudaMemcpyDeviceToHost);
+        // copy back
+        std::vector<float> flatOut(N);
 
-        cudaFree(d_v1);
-        cudaFree(d_v2);
-        cudaFree(d_out);
+        cudaMemcpy(flatOut.data(),
+                   d_Out,
+                   N * sizeof(float),
+                   cudaMemcpyDeviceToHost);
 
-        // reshape back to 3D
-        std::vector<std::vector<std::vector<float>>> ans(
-            d1, std::vector<std::vector<float>>(d2, std::vector<float>(d3)));
+        cudaFree(d_A);
+        cudaFree(d_Mask);
+        cudaFree(d_Out);
 
-        for (int i = 0; i < d1; i++)
-            for (int j = 0; j < d2; j++)
-                for (int k = 0; k < d3; k++)
-                {
-                    int idx = (i * d2 + j) * d3 + k;
-                    ans[i][j][k] = flat_out[idx];
-                }
+        // reshape
+        std::vector<std::vector<float>> ans(
+            rows,
+            std::vector<float>(cols)
+        );
+
+        for (int i = 0; i < rows; i++)
+            for (int j = 0; j < cols; j++)
+                ans[i][j] = flatOut[i * cols + j];
 
         return ans;
     }
     
-    vector<vector<vector<vector<float>>>> head_spliting(vector<vector<vector<float>>>& v1, int head_size)
+    vector<vector<vector<float>>> head_spliting(vector<vector<float>>& v1, int head_size)
     {
-        int num_seq = v1.size();
-        int seq_len = v1[0].size();
-        int embed_size = v1[0][0].size();
+        int seq_len = v1.size();
+        int embed_size = v1[0].size();
         int head_dim = embed_size / head_size;
 
-        vector<vector<vector<vector<float>>>> h;
-        h.reserve(num_seq);
+        vector<vector<vector<float>>> h;
+        h.reserve(seq_len);
 
-        for (int i = 0; i < num_seq; ++i)
+        for (int j = 0; j < seq_len; ++j)
         {
-            vector<vector<vector<float>>> temp2;
-            temp2.reserve(seq_len);
-            for (int j = 0; j < seq_len; ++j)
-            {
-                vector<vector<float>> temp1;
-                temp1.reserve(embed_size);      
-                for (int k = 0; k < embed_size; k+=head_dim)
-                {
-                    vector<float> temp;
-                    temp.reserve(head_dim);
+            vector<vector<float>> temp1;
+            temp1.reserve(embed_size);      
 
-                    for (int l = k; l < k + head_dim; ++l) temp.push_back(v1[i][j][l]);
-                    temp1.push_back(temp);
-                }
-                temp2.push_back(temp1);
+            for (int k = 0; k < embed_size; k+=head_dim)
+            {
+                vector<float> temp;
+                temp.reserve(head_dim);
+
+                for (int l = k; l < k + head_dim; ++l) temp.push_back(v1[j][l]);
+                temp1.push_back(temp);
             }
-            h.push_back(temp2);
+            h.push_back(temp1);
         }
         return h;
     }
