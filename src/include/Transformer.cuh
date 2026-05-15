@@ -36,8 +36,6 @@ class Transformer
 
 	vector<vector<float>> Y;
 	vector<vector<vector<float>>> X;
-	vector<vector<vector<float>>> X_input;
-	vector<vector<vector<float>>> X_output;
 
 	vector<vector<float>> wq;
 	vector<vector<float>> wk;
@@ -46,13 +44,13 @@ class Transformer
 	vector<vector<float>> w1;
 	vector<vector<float>> w2;	
 	
-	vector<vector<vector<float>>> q;
-	vector<vector<vector<float>>> k;
-	vector<vector<vector<float>>> v;
+	vector<vector<float>> q;
+	vector<vector<float>> k;
+	vector<vector<float>> v;
 
-	vector<vector<vector<vector<float>>>> q_h;
-	vector<vector<vector<vector<float>>>> k_h;
-	vector<vector<vector<vector<float>>>> v_h;	
+	vector<vector<vector<float>>> q_h;
+	vector<vector<vector<float>>> k_h;
+	vector<vector<vector<float>>> v_h;	
 
 	vector<float> gamma;
 	vector<float> beta;
@@ -176,7 +174,7 @@ public:
 
 		for (int batch = 0; batch < batch_size; ++batch)
 		{			
-			auto dropout_mask = Random::dropout_mask(seq_len, embed_size, dropout_rate);
+			auto dropout_mask = Tensor::dropout_mask(seq_len, embed_size, dropout_rate);
 
 			auto X_input = Tensor::dropout(X[batch], dropout_mask, dropout_prob);
 

@@ -81,62 +81,49 @@ namespace Tensor
     }
 
     __global__ void layernorm_kernel(
-        float *v,
-        const float *gamma,
-        const float *beta,
-        int batch_size,
+        float *data,
+        float *gamma,
+        float *beta,
         int seq_len,
         int embed_size)
     {
-        int idx =
-            blockIdx.x * blockDim.x + threadIdx.x;
+        int row = blockIdx.x * blockDim.x + threadIdx.x;
 
-        int total_tokens =
-            batch_size * seq_len;
-
-        if (idx >= total_tokens || embed_size <= 0)
-            return;
-
-        int offset = idx * embed_size;
-
-        // mean
-        float mean = 0.0f;
-
-        for (int k = 0; k < embed_size; k++)
+        if (row < seq_len)
         {
-            mean += v[offset + k];
-        }
+            int offset = row * embed_size;
 
-        mean /= (float)embed_size;
+            // mean
+            float mean = 0.0f;
 
-        // variance
-        float variance = 0.0f;
+            for (int k = 0; k < embed_size; k++)
+                mean += data[offset + k];
 
-        for (int k = 0; k < embed_size; k++)
-        {
-            float diff =
-                v[offset + k] - mean;
+            mean /= embed_size;
 
-            variance += diff * diff;
-        }
+            // variance
+            float variance = 0.0f;
 
-        variance /= (float)embed_size;
+            for (int k = 0; k < embed_size; k++)
+            {
+                float diff = data[offset + k] - mean;
+                variance += diff * diff;
+            }
 
-        // numerical stability
-        float inv_std =
-            rsqrtf(variance + 1e-5f);
+            variance /= embed_size;
 
-        // normalize + affine
-        for (int k = 0; k < embed_size; k++)
-        {
-            float normalized =
-                (v[offset + k] - mean) * inv_std;
+            float std = sqrtf(variance + 1e-5f);
 
-            v[offset + k] =
-                gamma[k] * normalized + beta[k];
+            // normalize + affine
+            for (int k = 0; k < embed_size; k++)
+            {
+                data[offset + k] =
+                    gamma[k] *
+                    ((data[offset + k] - mean) / std)
+                    + beta[k];
+            }
         }
     }
-
     __global__ void dot_kernel(
         float *A,
         float *B,
@@ -190,136 +177,68 @@ namespace Tensor
     }
 
     inline void layer_norm(
-        std::vector<std::vector<std::vector<float>>>& v,
+        std::vector<std::vector<float>>& v,
         std::vector<float>& gamma,
         std::vector<float>& beta)
     {
-        int batch_size = v.size();
+        int seq_len = v.size();
+        int embed_size = v[0].size();
 
-        if (batch_size == 0)
-            return;
-
-        int seq_len = v[0].size();
-
-        if (seq_len == 0)
-            return;
-
-        int embed_size = v[0][0].size();
-
-        if (embed_size == 0)
-            return;
-
-        if (gamma.size() != embed_size ||
-            beta.size() != embed_size)
-        {
-            std::cout
-                << "gamma/beta size mismatch"
-                << std::endl;
-
-            return;
-        }
-
-        int total =
-            batch_size * seq_len * embed_size;
+        int N = seq_len * embed_size;
 
         // flatten
-        std::vector<float> flat(total);
+        std::vector<float> flat(N);
 
-        for (int i = 0; i < batch_size; i++)
-        {
-            for (int j = 0; j < seq_len; j++)
-            {
-                for (int k = 0; k < embed_size; k++)
-                {
-                    int idx =
-                        (i * seq_len + j) * embed_size + k;
+        for (int i = 0; i < seq_len; i++)
+            for (int j = 0; j < embed_size; j++)
+                flat[i * embed_size + j] = v[i][j];
 
-                    flat[idx] = v[i][j][k];
-                }
-            }
-        }
+        // device memory
+        float *d_data, *d_gamma, *d_beta;
 
-        float *d_v = nullptr;
-        float *d_gamma = nullptr;
-        float *d_beta = nullptr;
+        cudaMalloc(&d_data, N * sizeof(float));
+        cudaMalloc(&d_gamma, embed_size * sizeof(float));
+        cudaMalloc(&d_beta, embed_size * sizeof(float));
 
-        check_cuda(
-            cudaMalloc(&d_v,
-                       total * sizeof(float)));
+        cudaMemcpy(d_data,
+                   flat.data(),
+                   N * sizeof(float),
+                   cudaMemcpyHostToDevice);
 
-        check_cuda(
-            cudaMalloc(&d_gamma,
-                       embed_size * sizeof(float)));
+        cudaMemcpy(d_gamma,
+                   gamma.data(),
+                   embed_size * sizeof(float),
+                   cudaMemcpyHostToDevice);
 
-        check_cuda(
-            cudaMalloc(&d_beta,
-                       embed_size * sizeof(float)));
-
-        check_cuda(
-            cudaMemcpy(
-                d_v,
-                flat.data(),
-                total * sizeof(float),
-                cudaMemcpyHostToDevice));
-
-        check_cuda(
-            cudaMemcpy(
-                d_gamma,
-                gamma.data(),
-                embed_size * sizeof(float),
-                cudaMemcpyHostToDevice));
-
-        check_cuda(
-            cudaMemcpy(
-                d_beta,
-                beta.data(),
-                embed_size * sizeof(float),
-                cudaMemcpyHostToDevice));
-
-        int total_tokens =
-            batch_size * seq_len;
+        cudaMemcpy(d_beta,
+                   beta.data(),
+                   embed_size * sizeof(float),
+                   cudaMemcpyHostToDevice);
 
         int threads = 256;
-
-        int blocks =
-            (total_tokens + threads - 1) / threads;
+        int blocks = (seq_len + threads - 1) / threads;
 
         layernorm_kernel<<<blocks, threads>>>(
-            d_v,
+            d_data,
             d_gamma,
             d_beta,
-            batch_size,
             seq_len,
-            embed_size);
+            embed_size
+        );
 
-        check_cuda(cudaGetLastError());
-        check_cuda(cudaDeviceSynchronize());
+        cudaMemcpy(flat.data(),
+                   d_data,
+                   N * sizeof(float),
+                   cudaMemcpyDeviceToHost);
 
-        check_cuda(
-            cudaMemcpy(
-                flat.data(),
-                d_v,
-                total * sizeof(float),
-                cudaMemcpyDeviceToHost));
-
-        cudaFree(d_v);
+        cudaFree(d_data);
         cudaFree(d_gamma);
         cudaFree(d_beta);
 
         // reshape back
-        for (int i = 0; i < batch_size; i++)
-        {
-            for (int j = 0; j < seq_len; j++)
-            {
-                for (int k = 0; k < embed_size; k++)
-                {
-                    int idx =
-                        (i * seq_len + j) * embed_size + k;
-
-                    v[i][j][k] = flat[idx];
-                }
-            }
-        }
+        for (int i = 0; i < seq_len; i++)
+            for (int j = 0; j < embed_size; j++)
+                v[i][j] = flat[i * embed_size + j];
     }
 
     inline std::vector<std::vector<float>>
@@ -542,7 +461,7 @@ namespace Tensor
     }
 
     inline std::vector<std::vector<float>>
-    dropout_gpu(
+    dropout(
         std::vector<std::vector<float>>& v1,
         std::vector<std::vector<float>>& v2,
         float prob)
@@ -617,7 +536,7 @@ namespace Tensor
 
         return ans;
     }
-    
+
     vector<vector<vector<float>>> head_spliting(vector<vector<float>>& v1, int head_size)
     {
         int seq_len = v1.size();
@@ -869,7 +788,6 @@ namespace Tensor
 
         return ans;
     }
-
 }
 
 #endif
