@@ -24,6 +24,8 @@ class Transformer
 	float head_dim;
 	float dropout_rate;
 	float dropout_prob;
+	int display;
+	bool flag;
 
 	vector<long long> token_ids;
 	vector<long long> token_x;
@@ -72,6 +74,8 @@ public:
 			dropout_rate = stof(in["GPT"]["Dropout_rate"]);
 			dropout_prob = 1.0f - dropout_rate;
 			head_size = stoi(in["GPT"]["Head_size"]);
+			display = stoi(in["GPT"]["Display"]);
+			flag = display==1 ? true : false;			
 			head_dim = embed_size / head_size;
 			token_ids = ids;
 			context_len = token_ids.size();
@@ -171,23 +175,101 @@ public:
 
 	void Transformer_block()
 	{
-
-		for (int batch = 0; batch < batch_size; ++batch)
-		{			
-			auto dropout_mask = Tensor::dropout_mask(seq_len, embed_size, dropout_rate);
-
-			auto X_input = Tensor::dropout(X[batch], dropout_mask, dropout_prob);
-
-			for (int i = 0; i < block_size; ++i)
+		embed_mat_t = Tensor::transpose2(embed_mat);
+		int ct = 0;
+		for (int i = 0; i < num_seq; i+=batch_size)
+		{
+			flag ? cout << "======================================================================" << endl : cout << "";
+			flag ? cout << "Batch " << ++ct << " Started...." << endl : cout << "";
+			vector<vector<vector<float>>> X_input;
+			X_input.reserve(batch_size);
+			for (int seq = i, j = 0; seq < batch_size + i, j < batch_size; ++seq, ++j)
 			{
-				auto residual_1 = X_input;
+				flag ? cout << "===========================================================" << endl : cout << "";
+				flag ? cout << "seq " << seq + 1 << " Started...." << endl : cout << "";
 				
-				Tensor::layer_norm(X_input, gamma, beta);
-				linear_projection(X_input);
+				flag ? cout << "Input Dropouting......" : cout << "";
+				auto dropout_mask = Random::dropout_mask(seq_len, embed_size, dropout_rate);
+				auto X_input2 = Tensor::dropout(X[seq], dropout_mask, dropout_prob);
+				flag ? cout << "Done......" << endl : cout << "";
+
+				for (int i = 0; i < block_size; ++i)
+				{
+					flag ? cout << "=========================================" << endl : cout << "";
+					flag ? cout << i + 1 << " Block started...." << endl : cout << "";
+					flag ? cout << "=========================================" << endl : cout << "";
+					auto residual = X_input2;
+					
+					flag ? cout << "Block First Layer normalizing....." : cout << "";
+					Tensor::layer_norm(X_input2, gamma, beta);
+					flag ? cout << "Done..." << endl : cout << "";
+					
+					flag ? cout << "Block Linear Projecting....." : cout << "";
+					linear_projection(X_input2);
+					flag ? cout << "Done..." << endl : cout << "";
+
+					flag ? cout << "Block attension Score Calculating....." : cout << "";
+					auto attension = Attension::score(q_h, k_h, v_h, wo);
+					flag ? cout << "Done..." << endl : cout << "";
+
+					flag ? cout << "Attension Score Dropouting......" : cout << "";
+					dropout_mask = Random::dropout_mask(seq_len, embed_size, dropout_rate);
+					X_input2 = Tensor::dropout(attension, dropout_mask, dropout_prob);
+					flag ? cout << "Done..." << endl : cout << "";
+
+					flag ? cout << "First Residual Adding......" : cout << "";
+					X_input2 = Tensor::matadd(residual, X_input2);
+					flag ? cout << "Done..." << endl : cout << "";
+
+					residual = X_input2;
+					flag ? cout << "Block Second Layer normalizing....." : cout << "";
+					Tensor::layer_norm(X_input2, gamma, beta);
+					flag ? cout << "Done..." << endl << endl : cout << "";
+
+					flag ? cout << "Linear Layer Started......" << endl : cout << "";
+					
+					flag ? cout << "Linear1 Calulating......" : cout << "";
+					X_input2 = Tensor::dot_product(X_input2, w1);
+					flag ? cout << "Done..." << endl : cout << "";
+					
+					flag ? cout << "Gelu Calculating......" : cout << "";
+					Function::gelu(X_input2);
+					flag ? cout << "Done..." << endl : cout << "";
+
+					flag ? cout << "Linear2 Calulating......" : cout << "";
+					X_input2 = Tensor::dot_product(X_input2, w2);
+					flag ? cout << "Done..." << endl : cout << "";
+					flag ? cout << "Linear Layer Calculated...." << endl << endl : cout << "";
+
+					flag ? cout << "Linear Output Dropouting......" : cout << "";
+					dropout_mask = Random::dropout_mask(seq_len, embed_size, dropout_rate);
+					X_input2 = Tensor::dropout(attension, dropout_mask, dropout_prob);
+					flag ? cout << "Done..." << endl : cout << "";
+					
+					flag ? cout << "Second Residual Adding......" : cout << "";
+					X_input2 = Tensor::matadd(residual, X_input2);
+					flag ? cout << "Done..." << endl : cout << "";
+					
+					flag ? cout << "=========================================" << endl : cout << "";
+					flag ? cout << i + 1 << " ended...." << endl : cout << "";
+					flag ? cout << "=========================================" << endl << endl : cout << "";
+				}
+				flag ? cout << "Final Layer normalizing....." : cout << "";
+				Tensor::layer_norm(X_input2, gamma, beta);
+				flag ? cout << "Done..." << endl : cout << "";
+				flag ? cout << "LM Head Projecting....." : cout << "";
+				X_input2 = Tensor::dot_product(X_input2, embed_mat_t);
+				flag ? cout << "Done..." << endl : cout << "";
+				flag ? cout << "Softmax....." : cout << "";
+				Function::softmax(X_input2);
+				flag ? cout << "Done..." << endl : cout << "";
+				X_input.push_back(X_input2);
+				flag ? cout << "Done..." << endl << endl : cout << "";
+				flag ? cout << "===========================================================" << endl : cout << "";
 			}
+			flag ? cout << "Batch " << ct << " ended...." << endl : cout << "";
 		}
-		cout << "Done" << endl;
-	}	
+	}
 };
 
 #endif
