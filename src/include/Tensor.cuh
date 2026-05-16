@@ -592,7 +592,26 @@ namespace Tensor
         return trans;
     }
 
-    vector<vector<float>> transpose(vector<vector<float>>& v)
+    vector<vector<float>> transpose(const vector<vector<float>>& v)
+    {
+        int dim1 = v.size();
+        int dim2 = v[0].size();
+
+        vector<vector<float>> trans;
+        trans.reserve(dim1);
+
+        for (int i = 0; i < dim2; ++i)
+        {
+            vector<float> temp;
+            temp.reserve(dim2);
+            for (int j = 0; j < dim1; ++j) temp.push_back(v[j][i]);
+            trans.push_back(temp);
+        }
+        
+        return trans;
+    }
+    
+    vector<vector<float>> transpose2(vector<vector<float>>& v)
     {
         int dim1 = v.size();
         int dim2 = v[0].size();
@@ -710,30 +729,28 @@ namespace Tensor
         for (int i = 0; i < cols; ++i) for (int j = 0; j < rows; ++j) ans.push_back(v[i][j]);
         return ans;
     }
-
-    inline std::vector<std::vector<std::vector<float>>> matadd(
-        std::vector<std::vector<std::vector<float>>>& v1,
-        std::vector<std::vector<std::vector<float>>>& v2)
+    inline std::vector<std::vector<float>>
+    matadd(
+        std::vector<std::vector<float>>& v1,
+        std::vector<std::vector<float>>& v2)
     {
-        int dim1 = v1.size();
-        int dim2 = v1[0].size();
-        int dim3 = v1[0][0].size();
+        int rows = v1.size();
+        int cols = v1[0].size();
 
-        int N = dim1 * dim2 * dim3;
+        int N = rows * cols;
 
         // flatten
         std::vector<float> flatA(N);
         std::vector<float> flatB(N);
 
-        for (int i = 0; i < dim1; i++)
-            for (int j = 0; j < dim2; j++)
-                for (int k = 0; k < dim3; k++)
-                {
-                    int idx = (i * dim2 + j) * dim3 + k;
+        for (int i = 0; i < rows; i++)
+            for (int j = 0; j < cols; j++)
+            {
+                int idx = i * cols + j;
 
-                    flatA[idx] = v1[i][j][k];
-                    flatB[idx] = v2[i][j][k];
-                }
+                flatA[idx] = v1[i][j];
+                flatB[idx] = v2[i][j];
+            }
 
         // GPU memory
         float *d_A, *d_B, *d_C;
@@ -743,51 +760,50 @@ namespace Tensor
         cudaMalloc(&d_C, N * sizeof(float));
 
         cudaMemcpy(d_A,
-                   flatA.data(),
-                   N * sizeof(float),
-                   cudaMemcpyHostToDevice);
+                flatA.data(),
+                N * sizeof(float),
+                cudaMemcpyHostToDevice);
 
         cudaMemcpy(d_B,
-                   flatB.data(),
-                   N * sizeof(float),
-                   cudaMemcpyHostToDevice);
+                flatB.data(),
+                N * sizeof(float),
+                cudaMemcpyHostToDevice);
 
         int threads = 256;
         int blocks = (N + threads - 1) / threads;
 
-        matadd_kernel<<<blocks, threads>>>(d_A, d_B, d_C, N);
+        matadd_kernel<<<blocks, threads>>>(
+            d_A,
+            d_B,
+            d_C,
+            N
+        );
 
         // copy back
         std::vector<float> flatC(N);
 
         cudaMemcpy(flatC.data(),
-                   d_C,
-                   N * sizeof(float),
-                   cudaMemcpyDeviceToHost);
+                d_C,
+                N * sizeof(float),
+                cudaMemcpyDeviceToHost);
 
         cudaFree(d_A);
         cudaFree(d_B);
         cudaFree(d_C);
 
-        // reshape back
-        std::vector<std::vector<std::vector<float>>> ans(
-            dim1,
-            std::vector<std::vector<float>>(
-                dim2,
-                std::vector<float>(dim3)
-            )
+        // reshape
+        std::vector<std::vector<float>> ans(
+            rows,
+            std::vector<float>(cols)
         );
 
-        for (int i = 0; i < dim1; i++)
-            for (int j = 0; j < dim2; j++)
-                for (int k = 0; k < dim3; k++)
-                {
-                    int idx = (i * dim2 + j) * dim3 + k;
-                    ans[i][j][k] = flatC[idx];
-                }
+        for (int i = 0; i < rows; i++)
+            for (int j = 0; j < cols; j++)
+                ans[i][j] = flatC[i * cols + j];
 
         return ans;
     }
+
 }
 
 #endif

@@ -189,7 +189,7 @@ public:
 				flag ? cout << "seq " << seq + 1 << " Started...." << endl : cout << "";
 				
 				flag ? cout << "Input Dropouting......" : cout << "";
-				auto dropout_mask = Random::dropout_mask(seq_len, embed_size, dropout_rate);
+				auto dropout_mask = Tensor::dropout_mask(seq_len, embed_size, dropout_rate);
 				auto X_input2 = Tensor::dropout(X[seq], dropout_mask, dropout_prob);
 				flag ? cout << "Done......" << endl : cout << "";
 
@@ -213,7 +213,7 @@ public:
 					flag ? cout << "Done..." << endl : cout << "";
 
 					flag ? cout << "Attension Score Dropouting......" : cout << "";
-					dropout_mask = Random::dropout_mask(seq_len, embed_size, dropout_rate);
+					dropout_mask = Tensor::dropout_mask(seq_len, embed_size, dropout_rate);
 					X_input2 = Tensor::dropout(attension, dropout_mask, dropout_prob);
 					flag ? cout << "Done..." << endl : cout << "";
 
@@ -242,7 +242,7 @@ public:
 					flag ? cout << "Linear Layer Calculated...." << endl << endl : cout << "";
 
 					flag ? cout << "Linear Output Dropouting......" : cout << "";
-					dropout_mask = Random::dropout_mask(seq_len, embed_size, dropout_rate);
+					dropout_mask = Tensor::dropout_mask(seq_len, embed_size, dropout_rate);
 					X_input2 = Tensor::dropout(attension, dropout_mask, dropout_prob);
 					flag ? cout << "Done..." << endl : cout << "";
 					
@@ -264,11 +264,13 @@ public:
 				Function::softmax(X_input2);
 				flag ? cout << "Done..." << endl : cout << "";
 				X_input.push_back(X_input2);
+				X[seq] = X_input2;
 				flag ? cout << "Done..." << endl << endl : cout << "";
 				flag ? cout << "===========================================================" << endl : cout << "";
 			}
 			flag ? cout << "Batch " << ct << " ended...." << endl : cout << "";
 		}
+		Debug::display(X);
 	}
 };
 
