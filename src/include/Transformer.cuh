@@ -175,14 +175,15 @@ public:
 
 	void Transformer_block()
 	{
-		embed_mat_t = Tensor::transpose2(embed_mat);
 		int ct = 0;
+		embed_mat_t = Tensor::transpose2(embed_mat);
 		for (int i = 0; i < num_seq; i+=batch_size)
 		{
 			flag ? cout << "======================================================================" << endl : cout << "";
 			flag ? cout << "Batch " << ++ct << " Started...." << endl : cout << "";
 			vector<vector<vector<float>>> X_input;
 			X_input.reserve(batch_size);
+			float loss = 0.0f;
 			for (int seq = i, j = 0; seq < batch_size + i, j < batch_size; ++seq, ++j)
 			{
 				flag ? cout << "===========================================================" << endl : cout << "";
@@ -253,24 +254,33 @@ public:
 					flag ? cout << "=========================================" << endl : cout << "";
 					flag ? cout << i + 1 << " ended...." << endl : cout << "";
 					flag ? cout << "=========================================" << endl << endl : cout << "";
-				}
+				}	
 				flag ? cout << "Final Layer normalizing....." : cout << "";
 				Tensor::layer_norm(X_input2, gamma, beta);
 				flag ? cout << "Done..." << endl : cout << "";
+				
 				flag ? cout << "LM Head Projecting....." : cout << "";
 				X_input2 = Tensor::dot_product(X_input2, embed_mat_t);
 				flag ? cout << "Done..." << endl : cout << "";
+				
 				flag ? cout << "Softmax....." : cout << "";
 				Function::softmax(X_input2);
 				flag ? cout << "Done..." << endl : cout << "";
+
+				flag ? cout << "Calculating Loss....." : cout << "";
+				for (int lss = 0; lss < seq_len; ++lss) loss += -log(X_input2[lss][Y[i][lss]]);
+				flag ? cout << "Done..." << endl : cout << "";
+
 				X_input.push_back(X_input2);
-				X[seq] = X_input2;
 				flag ? cout << "Done..." << endl << endl : cout << "";
 				flag ? cout << "===========================================================" << endl : cout << "";
 			}
+			flag ? cout << "Calculating Batch " << ct << " Loss....." : cout << "";
+			flag ? cout << "Done..." : cout << "";			
+			flag ? cout << "Batch " << ct << " Loss : " << loss / (batch_size * seq_len) << endl : cout << "Batch " << ++ct << " Loss : " << loss / (batch_size * seq_len) << endl;
+
 			flag ? cout << "Batch " << ct << " ended...." << endl : cout << "";
 		}
-		Debug::display(X);
 	}
 };
 
