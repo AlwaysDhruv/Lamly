@@ -1,1 +1,2 @@
-# Transfomer Based Framework For Building a Models
+# Lamly
+Its a Transformer based platform to build the text to text gpt models. Its suppoerted with cuda. By giving config.ini file as you provide the parameters of models to build it. Now in Developement...
