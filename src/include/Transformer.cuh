@@ -184,9 +184,13 @@ public:
 			
 			vector<vector<vector<float>>> X_input;
 			vector<vector<vector<float>>> loss_gradients;
+			vector<vector<vector<float>>> hidden_states;
+			vector<vector<float>> dw_vocab(embed_size, vector<float>(vocab_size, 0.0f));
+			vector<vector<vector<float>>> dh;
 			
-			loss_gradients.reserve(batch_size);			
+			loss_gradients.reserve(batch_size);
 			X_input.reserve(batch_size);
+			hidden_states.reserve(batch_size);
 			
 			float loss = 0.0f;
 			
@@ -294,6 +298,18 @@ public:
 			flag ? cout << "Calculating Batch " << ct << " Loss....." : cout << "";
 			flag ? cout << "Done..." : cout << "";			
 			flag ? cout << "Batch " << ct << " Loss : " << loss / (batch_size * seq_len) << endl : cout << "Batch " << ++ct << " Loss : " << loss / (batch_size * seq_len) << endl;
+
+			flag ? cout << "LM head Backward....." : cout << "";
+			auto embed_mat_t2 = Tensor::transpose2(embed_mat_t);
+			dh.reserve(batch_size);
+			for (int gra = 0; gra < batch_size; ++gra)
+			{
+				auto h_t = Tensor::transpose(hidden_states[gra]);
+				auto sum = Tensor::dot_product(h_t, loss_gradients[gra]);
+				dw_vocab = Tensor::matadd(dw_vocab, sum);
+				dh.push_back(Tensor::dot_product(loss_gradients[gra], embed_mat_t2));
+			}
+			flag ? cout << "Done..." : cout << "";
 			
 			flag ? cout << "Batch " << ct << " ended...." << endl : cout << "";
 		}
