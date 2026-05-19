@@ -173,7 +173,7 @@ public:
 		v_h = Tensor::transpose(v_h);
 	}
 
-	void Transformer_block()
+	void Transformer()
 	{
 		int ct = 0;
 		embed_mat_t = Tensor::transpose2(embed_mat);
@@ -278,7 +278,7 @@ public:
 			flag ? cout << "Calculating Batch " << ct << " Loss....." : cout << "";
 			flag ? cout << "Done..." : cout << "";			
 			flag ? cout << "Batch " << ct << " Loss : " << loss / (batch_size * seq_len) << endl : cout << "Batch " << ++ct << " Loss : " << loss / (batch_size * seq_len) << endl;
-
+			
 			flag ? cout << "Batch " << ct << " ended...." << endl : cout << "";
 		}
 	}

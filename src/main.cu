@@ -22,7 +22,7 @@ int main(int argc, char const *argv[])
 
 	tr.input_embedding();
 	
-	tr.Transformer_block();
+	tr.Transformer();
 
 	return 0;
 }
