@@ -173,7 +173,7 @@ public:
 		v_h = Tensor::transpose(v_h);
 	}
 
-	void Transformer()
+	void Transformers()
 	{
 		int ct = 0;
 		embed_mat_t = Tensor::transpose2(embed_mat);
@@ -181,9 +181,15 @@ public:
 		{
 			flag ? cout << "======================================================================" << endl : cout << "";
 			flag ? cout << "Batch " << ++ct << " Started...." << endl : cout << "";
+			
 			vector<vector<vector<float>>> X_input;
+			vector<vector<vector<float>>> loss_gradients;
+			
+			loss_gradients.reserve(batch_size);			
 			X_input.reserve(batch_size);
+			
 			float loss = 0.0f;
+			
 			for (int seq = i, j = 0; seq < batch_size + i, j < batch_size; ++seq, ++j)
 			{
 				flag ? cout << "===========================================================" << endl : cout << "";
@@ -269,9 +275,19 @@ public:
 
 				flag ? cout << "Calculating Loss....." : cout << "";
 				for (int lss = 0; lss < seq_len; ++lss) loss += -log(X_input2[lss][Y[i][lss]]);
+				X_input.push_back(X_input2);
 				flag ? cout << "Done..." << endl : cout << "";
 
-				X_input.push_back(X_input2);
+				flag ? cout << "Calculating Gradients....." : cout << "";
+				vector<vector<float>> gradient;
+				for (int lss = 0; lss < seq_len; ++lss)
+				{
+					X_input2[lss][Y[i][lss]] -= 1;
+					gradient.push_back(X_input2[lss]);
+				}
+				loss_gradients.push_back(gradient);
+				flag ? cout << "Done..." << endl : cout << "";
+
 				flag ? cout << "Done..." << endl << endl : cout << "";
 				flag ? cout << "===========================================================" << endl : cout << "";
 			}
