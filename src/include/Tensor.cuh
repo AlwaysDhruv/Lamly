@@ -611,7 +611,7 @@ namespace Tensor
         return trans;
     }
     
-    vector<vector<float>> transpose2(vector<vector<float>>& v)
+    vector<vector<float>> transpose(vector<vector<float>>& v)
     {
         int dim1 = v.size();
         int dim2 = v[0].size();

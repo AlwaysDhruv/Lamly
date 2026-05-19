@@ -176,7 +176,7 @@ public:
 	void Transformers()
 	{
 		int ct = 0;
-		embed_mat_t = Tensor::transpose2(embed_mat);
+		embed_mat_t = Tensor::transpose(embed_mat);
 		for (int i = 0; i < num_seq; i+=batch_size)
 		{
 			flag ? cout << "======================================================================" << endl : cout << "";
@@ -267,6 +267,7 @@ public:
 				}	
 				flag ? cout << "Final Layer normalizing....." : cout << "";
 				Tensor::layer_norm(X_input2, gamma, beta);
+				hidden_states.push_back(X_input2);
 				flag ? cout << "Done..." << endl : cout << "";
 				
 				flag ? cout << "LM Head Projecting....." : cout << "";
@@ -300,13 +301,14 @@ public:
 			flag ? cout << "Batch " << ct << " Loss : " << loss / (batch_size * seq_len) << endl : cout << "Batch " << ++ct << " Loss : " << loss / (batch_size * seq_len) << endl;
 
 			flag ? cout << "LM head Backward....." : cout << "";
-			auto embed_mat_t2 = Tensor::transpose2(embed_mat_t);
 			dh.reserve(batch_size);
 			for (int gra = 0; gra < batch_size; ++gra)
 			{
 				auto h_t = Tensor::transpose(hidden_states[gra]);
 				auto sum = Tensor::dot_product(h_t, loss_gradients[gra]);
 				dw_vocab = Tensor::matadd(dw_vocab, sum);
+		
+				auto embed_mat_t2 = Tensor::transpose(embed_mat_t);
 				dh.push_back(Tensor::dot_product(loss_gradients[gra], embed_mat_t2));
 			}
 			flag ? cout << "Done..." : cout << "";
