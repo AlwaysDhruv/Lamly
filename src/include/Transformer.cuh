@@ -183,15 +183,27 @@ public:
 			flag ? cout << "Batch " << ++ct << " Started...." << endl : cout << "";
 			
 			vector<vector<vector<float>>> X_input;
+			vector<vector<vector<float>>> X_bnorm;
+			vector<vector<vector<float>>> X_anorm;
 			vector<vector<vector<float>>> loss_gradients;
 			vector<vector<vector<float>>> hidden_states;
 			vector<vector<float>> dw_vocab(embed_size, vector<float>(vocab_size, 0.0f));
 			vector<vector<vector<float>>> dh;
+
+			vector<vector<float>> mean;
+			vector<vector<float>> var;
+			vector<vector<float>> std;
+			
+			X_input.reserve(batch_size);
 			
 			loss_gradients.reserve(batch_size);
-			X_input.reserve(batch_size);
 			hidden_states.reserve(batch_size);
 			
+			X_bnorm.reserve(batch_size);
+			mean.reserve(batch_size);
+			var.reserve(batch_size);
+			std.reserve(batch_size);
+
 			float loss = 0.0f;
 			
 			for (int seq = i, j = 0; seq < batch_size + i, j < batch_size; ++seq, ++j)
@@ -266,8 +278,14 @@ public:
 					flag ? cout << "=========================================" << endl << endl : cout << "";
 				}	
 				flag ? cout << "Final Layer normalizing....." : cout << "";
-				Tensor::layer_norm(X_input2, gamma, beta);
+				X_bnorm.push_back(X_input2);
+				auto [m, v, s, Xa] = Tensor::final_layer_norm(X_input2, gamma, beta);
+				mean.push_back(m);
+				var.push_back(v);
+				std.push_back(s);
+				X_anorm.push_back(Xa);
 				hidden_states.push_back(X_input2);
+				flag ? cout << "Done..." << endl : cout << "";
 				flag ? cout << "Done..." << endl : cout << "";
 				
 				flag ? cout << "LM Head Projecting....." : cout << "";
@@ -312,8 +330,13 @@ public:
 				dh.push_back(Tensor::dot_product(loss_gradients[gra], embed_mat_t2));
 			}
 			flag ? cout << "Done..." : cout << "";
-			
+			Debug::shape(X_bnorm);
+			Debug::shape(mean);
+			Debug::shape(var);
+			Debug::shape(std);
+			Debug::shape(X_anorm);
 			flag ? cout << "Batch " << ct << " ended...." << endl : cout << "";
+			break;			
 		}
 	}
 };
