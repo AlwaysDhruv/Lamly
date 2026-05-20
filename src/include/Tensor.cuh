@@ -124,6 +124,7 @@ namespace Tensor
             }
         }
     }
+
     __global__ void dot_kernel(
         float *A,
         float *B,
@@ -219,6 +220,48 @@ namespace Tensor
                 value[offset + k] =
                     gamma[k] * norm + beta[k];
             }
+        }
+    }
+
+    __global__ void add_kernel(
+        float *data,
+        float *out,
+        int batch_size,
+        int seq_len,
+        int embed_size)
+    {
+        int j = blockIdx.x * blockDim.x + threadIdx.x;
+
+        if (j < embed_size)
+        {
+            float sum = 0.0f;
+
+            for (int i = 0; i < batch_size; i++)
+            {
+                for (int k = 0; k < seq_len; k++)
+                {
+                    int idx =
+                        (i * seq_len + k) * embed_size + j;
+
+                    sum += data[idx];
+                }
+            }
+
+            out[j] = sum;
+        }
+    }
+
+    __global__ void matmul_e_kernel(
+        float *A,
+        float *B,
+        float *C,
+        int N)
+    {
+        int i = blockIdx.x * blockDim.x + threadIdx.x;
+
+        if (i < N)
+        {
+            C[i] = A[i] * B[i];
         }
     }
 
@@ -1001,6 +1044,152 @@ namespace Tensor
             stds,
             X_norm
         };
+    }
+
+    inline std::vector<float> add(
+        std::vector<std::vector<std::vector<float>>>& v)
+    {
+        int batch_size = v.size();
+        int seq_len = v[0].size();
+        int embed_size = v[0][0].size();
+
+        int N = batch_size * seq_len * embed_size;
+
+        // flatten
+        std::vector<float> flat(N);
+
+        for (int i = 0; i < batch_size; i++)
+            for (int k = 0; k < seq_len; k++)
+                for (int j = 0; j < embed_size; j++)
+                {
+                    int idx =
+                        (i * seq_len + k) * embed_size + j;
+
+                    flat[idx] = v[i][k][j];
+                }
+
+        // output
+        std::vector<float> ans(embed_size);
+
+        // device memory
+        float *d_data;
+        float *d_out;
+
+        cudaMalloc(&d_data, N * sizeof(float));
+        cudaMalloc(&d_out, embed_size * sizeof(float));
+
+        cudaMemcpy(d_data,
+                   flat.data(),
+                   N * sizeof(float),
+                   cudaMemcpyHostToDevice);
+
+        int threads = 256;
+        int blocks = (embed_size + threads - 1) / threads;
+
+        add_kernel<<<blocks, threads>>>(
+            d_data,
+            d_out,
+            batch_size,
+            seq_len,
+            embed_size
+        );
+
+        cudaMemcpy(ans.data(),
+                   d_out,
+                   embed_size * sizeof(float),
+                   cudaMemcpyDeviceToHost);
+
+        cudaFree(d_data);
+        cudaFree(d_out);
+
+        return ans;
+    }
+
+    inline std::vector<std::vector<std::vector<float>>>
+    matmul_e(
+        std::vector<std::vector<std::vector<float>>>& v1,
+        std::vector<std::vector<std::vector<float>>>& v2)
+    {
+        int batch_size = v1.size();
+        int seq_len = v1[0].size();
+        int embed_size = v1[0][0].size();
+
+        int N = batch_size * seq_len * embed_size;
+
+        // flatten
+        std::vector<float> flatA(N);
+        std::vector<float> flatB(N);
+
+        for (int i = 0; i < batch_size; i++)
+            for (int j = 0; j < seq_len; j++)
+                for (int k = 0; k < embed_size; k++)
+                {
+                    int idx =
+                        (i * seq_len + j) * embed_size + k;
+
+                    flatA[idx] = v1[i][j][k];
+                    flatB[idx] = v2[i][j][k];
+                }
+
+        // device memory
+        float *d_A, *d_B, *d_C;
+
+        cudaMalloc(&d_A, N * sizeof(float));
+        cudaMalloc(&d_B, N * sizeof(float));
+        cudaMalloc(&d_C, N * sizeof(float));
+
+        cudaMemcpy(d_A,
+                   flatA.data(),
+                   N * sizeof(float),
+                   cudaMemcpyHostToDevice);
+
+        cudaMemcpy(d_B,
+                   flatB.data(),
+                   N * sizeof(float),
+                   cudaMemcpyHostToDevice);
+
+        int threads = 256;
+        int blocks = (N + threads - 1) / threads;
+
+        matmul_e_kernel<<<blocks, threads>>>(
+            d_A,
+            d_B,
+            d_C,
+            N
+        );
+
+        // copy back
+        std::vector<float> flatC(N);
+
+        cudaMemcpy(flatC.data(),
+                   d_C,
+                   N * sizeof(float),
+                   cudaMemcpyDeviceToHost);
+
+        cudaFree(d_A);
+        cudaFree(d_B);
+        cudaFree(d_C);
+
+        // reshape
+        std::vector<std::vector<std::vector<float>>> temp(
+            batch_size,
+            std::vector<std::vector<float>>(
+                seq_len,
+                std::vector<float>(embed_size)
+            )
+        );
+
+        for (int i = 0; i < batch_size; i++)
+            for (int j = 0; j < seq_len; j++)
+                for (int k = 0; k < embed_size; k++)
+                {
+                    int idx =
+                        (i * seq_len + j) * embed_size + k;
+
+                    temp[i][j][k] = flatC[idx];
+                }
+
+        return temp;
     }
 }
 

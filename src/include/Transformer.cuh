@@ -330,11 +330,13 @@ public:
 				dh.push_back(Tensor::dot_product(loss_gradients[gra], embed_mat_t2));
 			}
 			flag ? cout << "Done..." : cout << "";
-			Debug::shape(X_bnorm);
-			Debug::shape(mean);
-			Debug::shape(var);
-			Debug::shape(std);
-			Debug::shape(X_anorm);
+
+			flag ? cout << "Final Layer Norm Backward....." : cout << "";
+			auto dbeta = Tensor::add(dh);
+			auto dg = Tensor::matmul_e(dh, X_anorm);
+			auto dgamma = Tensor::add(dg);
+			flag ? cout << "Done..." << endl: cout << "";
+
 			flag ? cout << "Batch " << ct << " ended...." << endl : cout << "";
 			break;			
 		}
