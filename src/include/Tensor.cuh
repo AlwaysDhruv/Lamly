@@ -265,6 +265,26 @@ namespace Tensor
         }
     }
 
+    __global__ void normalized_gradient_kernel(
+        float *A,
+        float *B,
+        float *C,
+        int batch_size,
+        int seq_len,
+        int embed_size)
+    {
+        int idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+        int N = batch_size * seq_len * embed_size;
+
+        if (idx < N)
+        {
+            int k = idx % embed_size;
+
+            C[idx] = A[idx] * B[k];
+        }
+    }
+
     inline void check_cuda(cudaError_t err)
     {
         if (err != cudaSuccess)
@@ -1191,6 +1211,93 @@ namespace Tensor
 
         return temp;
     }
+
+    inline std::vector<std::vector<std::vector<float>>>
+    normalized_gradient(
+        std::vector<std::vector<std::vector<float>>>& v1,
+        std::vector<float>& v2)
+    {
+        int batch_size = v1.size();
+        int seq_len = v1[0].size();
+        int embed_size = v1[0][0].size();
+
+        int N = batch_size * seq_len * embed_size;
+
+        // flatten
+        std::vector<float> flatA(N);
+
+        for (int i = 0; i < batch_size; i++)
+            for (int j = 0; j < seq_len; j++)
+                for (int k = 0; k < embed_size; k++)
+                {
+                    int idx =
+                        (i * seq_len + j) * embed_size + k;
+
+                    flatA[idx] = v1[i][j][k];
+                }
+
+        // output
+        std::vector<float> flatC(N);
+
+        // device memory
+        float *d_A, *d_B, *d_C;
+
+        cudaMalloc(&d_A, N * sizeof(float));
+        cudaMalloc(&d_B, embed_size * sizeof(float));
+        cudaMalloc(&d_C, N * sizeof(float));
+
+        cudaMemcpy(d_A,
+                   flatA.data(),
+                   N * sizeof(float),
+                   cudaMemcpyHostToDevice);
+
+        cudaMemcpy(d_B,
+                   v2.data(),
+                   embed_size * sizeof(float),
+                   cudaMemcpyHostToDevice);
+
+        int threads = 256;
+        int blocks = (N + threads - 1) / threads;
+
+        normalized_gradient_kernel<<<blocks, threads>>>(
+            d_A,
+            d_B,
+            d_C,
+            batch_size,
+            seq_len,
+            embed_size
+        );
+
+        cudaMemcpy(flatC.data(),
+                   d_C,
+                   N * sizeof(float),
+                   cudaMemcpyDeviceToHost);
+
+        cudaFree(d_A);
+        cudaFree(d_B);
+        cudaFree(d_C);
+
+        // reshape
+        std::vector<std::vector<std::vector<float>>> temp(
+            batch_size,
+            std::vector<std::vector<float>>(
+                seq_len,
+                std::vector<float>(embed_size)
+            )
+        );
+
+        for (int i = 0; i < batch_size; i++)
+            for (int j = 0; j < seq_len; j++)
+                for (int k = 0; k < embed_size; k++)
+                {
+                    int idx =
+                        (i * seq_len + j) * embed_size + k;
+
+                    temp[i][j][k] = flatC[idx];
+                }
+
+        return temp;
+    }    
 }
 
 #endif

@@ -335,6 +335,7 @@ public:
 			auto dbeta = Tensor::add(dh);
 			auto dg = Tensor::matmul_e(dh, X_anorm);
 			auto dgamma = Tensor::add(dg);
+			auto dX = Tensor::normalized_gradient(dh, gamma);
 			flag ? cout << "Done..." << endl: cout << "";
 
 			flag ? cout << "Batch " << ct << " ended...." << endl : cout << "";
