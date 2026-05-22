@@ -336,10 +336,12 @@ public:
 			auto dg = Tensor::matmul_e(dh, X_anorm);
 			auto dgamma = Tensor::add(dg);
 			auto dX = Tensor::normalized_gradient(dh, gamma);
+			auto dvar = Tensor::variance_gradient(X_bnorm, dX, mean, var);
+			Debug::shape(dvar);
 			flag ? cout << "Done..." << endl: cout << "";
 
-			flag ? cout << "Batch " << ct << " ended...." << endl : cout << "";
-			break;			
+			flag ? cout << "Batch " << ct << " ended...." << endl : cout << "";			
+			break;
 		}
 	}
 };

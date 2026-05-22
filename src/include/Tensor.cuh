@@ -285,6 +285,51 @@ namespace Tensor
         }
     }
 
+    __global__ void variance_gradient_kernel(
+        float *dx,
+        float *X,
+        float *mean,
+        float *var,
+        float *out,
+        int batch_size,
+        int seq_len,
+        int embed_size)
+    {
+        int idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+        int total = batch_size * seq_len;
+
+        if (idx < total)
+        {
+            int i = idx / seq_len;
+            int j = idx % seq_len;
+
+            int offset =
+                (i * seq_len + j) * embed_size;
+
+            float inv_std_cubed =
+                rsqrtf(var[idx] + 1e-5f);
+
+            inv_std_cubed =
+                inv_std_cubed *
+                inv_std_cubed *
+                inv_std_cubed;
+
+            float sum = 0.0f;
+
+            for (int k = 0; k < embed_size; k++)
+            {
+                sum +=
+                    dx[offset + k] *
+                    (X[offset + k] - mean[idx]) *
+                    (-0.5f) *
+                    inv_std_cubed;
+            }
+
+            out[idx] = sum;
+        }
+    }
+
     inline void check_cuda(cudaError_t err)
     {
         if (err != cudaSuccess)
@@ -1297,7 +1342,128 @@ namespace Tensor
                 }
 
         return temp;
-    }    
+    }
+
+    inline std::vector<std::vector<float>>
+    variance_gradient(
+        std::vector<std::vector<std::vector<float>>>& dx,
+        std::vector<std::vector<std::vector<float>>>& X,
+        std::vector<std::vector<float>>& mean,
+        std::vector<std::vector<float>>& var)
+    {
+        int batch_size = dx.size();
+        int seq_len = dx[0].size();
+        int embed_size = dx[0][0].size();
+
+        int N = batch_size * seq_len * embed_size;
+        int M = batch_size * seq_len;
+
+        // flatten
+        std::vector<float> flat_dx(N);
+        std::vector<float> flat_X(N);
+
+        std::vector<float> flat_mean(M);
+        std::vector<float> flat_var(M);
+
+        for (int i = 0; i < batch_size; i++)
+        {
+            for (int j = 0; j < seq_len; j++)
+            {
+                int idx2 = i * seq_len + j;
+
+                flat_mean[idx2] = mean[i][j];
+                flat_var[idx2] = var[i][j];
+
+                for (int k = 0; k < embed_size; k++)
+                {
+                    int idx3 =
+                        (i * seq_len + j) * embed_size + k;
+
+                    flat_dx[idx3] = dx[i][j][k];
+                    flat_X[idx3] = X[i][j][k];
+                }
+            }
+        }
+
+        // output
+        std::vector<float> flat_out(M);
+
+        // device memory
+        float *d_dx, *d_X;
+        float *d_mean, *d_var;
+        float *d_out;
+
+        cudaMalloc(&d_dx, N * sizeof(float));
+        cudaMalloc(&d_X, N * sizeof(float));
+
+        cudaMalloc(&d_mean, M * sizeof(float));
+        cudaMalloc(&d_var, M * sizeof(float));
+
+        cudaMalloc(&d_out, M * sizeof(float));
+
+        cudaMemcpy(d_dx,
+                   flat_dx.data(),
+                   N * sizeof(float),
+                   cudaMemcpyHostToDevice);
+
+        cudaMemcpy(d_X,
+                   flat_X.data(),
+                   N * sizeof(float),
+                   cudaMemcpyHostToDevice);
+
+        cudaMemcpy(d_mean,
+                   flat_mean.data(),
+                   M * sizeof(float),
+                   cudaMemcpyHostToDevice);
+
+        cudaMemcpy(d_var,
+                   flat_var.data(),
+                   M * sizeof(float),
+                   cudaMemcpyHostToDevice);
+
+        int threads = 256;
+        int blocks = (M + threads - 1) / threads;
+
+        variance_gradient_kernel<<<blocks, threads>>>(
+            d_dx,
+            d_X,
+            d_mean,
+            d_var,
+            d_out,
+            batch_size,
+            seq_len,
+            embed_size
+        );
+
+        cudaMemcpy(flat_out.data(),
+                   d_out,
+                   M * sizeof(float),
+                   cudaMemcpyDeviceToHost);
+
+        cudaFree(d_dx);
+        cudaFree(d_X);
+
+        cudaFree(d_mean);
+        cudaFree(d_var);
+
+        cudaFree(d_out);
+
+        // reshape
+        std::vector<std::vector<float>> ans(
+            batch_size,
+            std::vector<float>(seq_len)
+        );
+
+        for (int i = 0; i < batch_size; i++)
+            for (int j = 0; j < seq_len; j++)
+            {
+                int idx = i * seq_len + j;
+                ans[i][j] = flat_out[idx];
+            }
+
+        return ans;
+    }
+
 }
 
 #endif
