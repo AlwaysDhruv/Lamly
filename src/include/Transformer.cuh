@@ -184,7 +184,7 @@ public:
 			
 			vector<vector<vector<float>>> X_input;
 			vector<vector<vector<float>>> X_bnorm;
-			vector<vector<vector<float>>> X_anorm;
+			vector<vector<vector<float>>> X_meaned;
 			vector<vector<vector<float>>> loss_gradients;
 			vector<vector<vector<float>>> hidden_states;
 			vector<vector<float>> dw_vocab(embed_size, vector<float>(vocab_size, 0.0f));
@@ -283,7 +283,7 @@ public:
 				mean.push_back(m);
 				var.push_back(v);
 				std.push_back(s);
-				X_anorm.push_back(Xa);
+				X_meaned.push_back(Xa);
 				hidden_states.push_back(X_input2);
 				flag ? cout << "Done..." << endl : cout << "";
 				flag ? cout << "Done..." << endl : cout << "";
@@ -333,12 +333,16 @@ public:
 
 			flag ? cout << "Final Layer Norm Backward....." : cout << "";
 			auto dbeta = Tensor::add(dh);
-			auto dg = Tensor::matmul_e(dh, X_anorm);
+			auto dg = Tensor::matmul_e(dh, X_meaned);
 			auto dgamma = Tensor::add(dg);
 			auto dx_hat = Tensor::normalized_gradient(dh, gamma);
 			auto dvar = Tensor::variance_gradient(X_bnorm, dx_hat, mean, var);
 			auto dmean = Tensor::mean_gradient(dx_hat, X_meaned, dvar, std);
 			auto dx = Tensor::input_gradient(dx_hat, X_meaned, dvar, dmean, std);
+			flag ? cout << "Done..." << endl: cout << "";
+
+			flag ? cout << "Transfomer Blocks Backward....." : cout << "";
+
 			flag ? cout << "Done..." << endl: cout << "";
 
 			flag ? cout << "Batch " << ct << " ended...." << endl : cout << "";
