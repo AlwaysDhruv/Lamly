@@ -337,11 +337,10 @@ public:
 			auto dgamma = Tensor::add(dg);
 			auto dX = Tensor::normalized_gradient(dh, gamma);
 			auto dvar = Tensor::variance_gradient(X_bnorm, dX, mean, var);
-			Debug::shape(dvar);
+			auto dmean = Tensor::mean_gradient(dX, X_meaned, dvar, std);
 			flag ? cout << "Done..." << endl: cout << "";
 
-			flag ? cout << "Batch " << ct << " ended...." << endl : cout << "";			
-			break;
+			flag ? cout << "Batch " << ct << " ended...." << endl : cout << "";
 		}
 	}
 };

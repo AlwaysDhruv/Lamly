@@ -330,6 +330,47 @@ namespace Tensor
         }
     }
 
+    __global__ void mean_gradient_kernel(
+        float *dx,
+        float *X_meaned,
+        float *dvar,
+        float *std,
+        float *out,
+        int batch_size,
+        int seq_len,
+        int embed_size)
+    {
+        int idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+        int total = batch_size * seq_len;
+
+        if (idx < total)
+        {
+            int offset =
+                idx * embed_size;
+
+            float value =
+                -1.0f / std[idx];
+
+            float sum1 = 0.0f;
+            float sum2 = 0.0f;
+
+            for (int k = 0; k < embed_size; k++)
+            {
+                sum1 +=
+                    dx[offset + k] * value;
+
+                sum2 +=
+                    (-2.0f * X_meaned[offset + k]);
+            }
+
+            float mean_term =
+                (dvar[idx] * sum2) / embed_size;
+
+            out[idx] = sum1 + mean_term;
+        }
+    }
+
     inline void check_cuda(cudaError_t err)
     {
         if (err != cudaSuccess)
@@ -1445,6 +1486,130 @@ namespace Tensor
 
         cudaFree(d_mean);
         cudaFree(d_var);
+
+        cudaFree(d_out);
+
+        // reshape
+        std::vector<std::vector<float>> ans(
+            batch_size,
+            std::vector<float>(seq_len)
+        );
+
+        for (int i = 0; i < batch_size; i++)
+            for (int j = 0; j < seq_len; j++)
+            {
+                int idx = i * seq_len + j;
+                ans[i][j] = flat_out[idx];
+            }
+
+        return ans;
+    }
+
+    inline std::vector<std::vector<float>>
+    mean_gradient(
+        std::vector<std::vector<std::vector<float>>>& dx,
+        std::vector<std::vector<std::vector<float>>>& X_meaned,
+        std::vector<std::vector<float>>& dvar,
+        std::vector<std::vector<float>>& std)
+    {
+        int batch_size = dx.size();
+        int seq_len = dx[0].size();
+        int embed_size = dx[0][0].size();
+
+        int N = batch_size * seq_len * embed_size;
+        int M = batch_size * seq_len;
+
+        // flatten
+        std::vector<float> flat_dx(N);
+        std::vector<float> flat_Xm(N);
+
+        std::vector<float> flat_dvar(M);
+        std::vector<float> flat_std(M);
+
+        for (int i = 0; i < batch_size; i++)
+        {
+            for (int j = 0; j < seq_len; j++)
+            {
+                int idx2 = i * seq_len + j;
+
+                flat_dvar[idx2] = dvar[i][j];
+                flat_std[idx2] = std[i][j];
+
+                for (int k = 0; k < embed_size; k++)
+                {
+                    int idx3 =
+                        (i * seq_len + j) * embed_size + k;
+
+                    flat_dx[idx3] = dx[i][j][k];
+                    flat_Xm[idx3] = X_meaned[i][j][k];
+                }
+            }
+        }
+
+        // output
+        std::vector<float> flat_out(M);
+
+        // device memory
+        float *d_dx;
+        float *d_Xm;
+
+        float *d_dvar;
+        float *d_std;
+
+        float *d_out;
+
+        cudaMalloc(&d_dx, N * sizeof(float));
+        cudaMalloc(&d_Xm, N * sizeof(float));
+
+        cudaMalloc(&d_dvar, M * sizeof(float));
+        cudaMalloc(&d_std, M * sizeof(float));
+
+        cudaMalloc(&d_out, M * sizeof(float));
+
+        cudaMemcpy(d_dx,
+                   flat_dx.data(),
+                   N * sizeof(float),
+                   cudaMemcpyHostToDevice);
+
+        cudaMemcpy(d_Xm,
+                   flat_Xm.data(),
+                   N * sizeof(float),
+                   cudaMemcpyHostToDevice);
+
+        cudaMemcpy(d_dvar,
+                   flat_dvar.data(),
+                   M * sizeof(float),
+                   cudaMemcpyHostToDevice);
+
+        cudaMemcpy(d_std,
+                   flat_std.data(),
+                   M * sizeof(float),
+                   cudaMemcpyHostToDevice);
+
+        int threads = 256;
+        int blocks = (M + threads - 1) / threads;
+
+        mean_gradient_kernel<<<blocks, threads>>>(
+            d_dx,
+            d_Xm,
+            d_dvar,
+            d_std,
+            d_out,
+            batch_size,
+            seq_len,
+            embed_size
+        );
+
+        cudaMemcpy(flat_out.data(),
+                   d_out,
+                   M * sizeof(float),
+                   cudaMemcpyDeviceToHost);
+
+        cudaFree(d_dx);
+        cudaFree(d_Xm);
+
+        cudaFree(d_dvar);
+        cudaFree(d_std);
 
         cudaFree(d_out);
 
