@@ -335,9 +335,10 @@ public:
 			auto dbeta = Tensor::add(dh);
 			auto dg = Tensor::matmul_e(dh, X_anorm);
 			auto dgamma = Tensor::add(dg);
-			auto dX = Tensor::normalized_gradient(dh, gamma);
-			auto dvar = Tensor::variance_gradient(X_bnorm, dX, mean, var);
-			auto dmean = Tensor::mean_gradient(dX, X_meaned, dvar, std);
+			auto dx_hat = Tensor::normalized_gradient(dh, gamma);
+			auto dvar = Tensor::variance_gradient(X_bnorm, dx_hat, mean, var);
+			auto dmean = Tensor::mean_gradient(dx_hat, X_meaned, dvar, std);
+			auto dx = Tensor::input_gradient(dx_hat, X_meaned, dvar, dmean, std);
 			flag ? cout << "Done..." << endl: cout << "";
 
 			flag ? cout << "Batch " << ct << " ended...." << endl : cout << "";
