@@ -342,7 +342,8 @@ public:
 			flag ? cout << "Done..." << endl: cout << "";
 
 			flag ? cout << "Transfomer Blocks Backward....." : cout << "";
-
+			auto dresidual = dX;
+			auto dmlp = dX;
 			flag ? cout << "Done..." << endl: cout << "";
 
 			flag ? cout << "Batch " << ct << " ended...." << endl : cout << "";
