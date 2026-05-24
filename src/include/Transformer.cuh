@@ -104,8 +104,8 @@ public:
 			wo = Tensor::random(embed_size, embed_size);
 			w1 = Tensor::random(embed_size, hidden_size);
 			w2 = Tensor::random(hidden_size, embed_size);
-			embed_mat = Random::weights(vocab_size, embed_size);
-			pos_mat = Random::weights(seq_len, embed_size);			
+			embed_mat = Tensor::random(vocab_size, embed_size);
+			pos_mat = Tensor::random(seq_len, embed_size);			
 			cout << "Done....." << endl;
 		}
 		else cout << "config.ini Have Problem...." << endl;
@@ -176,7 +176,7 @@ public:
 	{
 		int ct = 0;
 		embed_mat_t = Tensor::transpose(embed_mat);
-		for (int i = 0; i < num_seq; i+=batch_size)
+		for (int batch = 0; batch < num_seq; batch+=batch_size)
 		{
 			flag ? cout << "======================================================================" << endl : cout << "";
 			flag ? cout << "Batch " << ++ct << " Started...." << endl : cout << "";
