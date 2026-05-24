@@ -175,26 +175,27 @@ public:
 	void Transformers()
 	{
 		int ct = 0;
-		embed_mat_t = Tensor::transpose(embed_mat);
+		embed_mat_t = Tensor::transpose2(embed_mat);
+
 		for (int batch = 0; batch < num_seq; batch+=batch_size)
 		{
 			flag ? cout << "======================================================================" << endl : cout << "";
-			flag ? cout << "Batch " << ++ct << " Started...." << endl : cout << "";
-
+			flag ? cout << "Batch " << ++ct << " Started...." << endl << endl : cout << "";
+			
 			vector<vector<vector<float>>> X;
 			X.reserve(batch_size);
 			for (int seq = batch; seq < batch_size + batch; ++seq)
 			{
 				vector<vector<float>> temp;
 				temp.reserve(seq_len);
-				
-				for (int i = 0; i < seq_len; ++i) temp.push_back(Tensor::matadd(embed_mat[TX[seq][i]], pos_mat[i]));
+				for (int i = 0; i < seq_len; ++i)
+				{
+					temp.push_back(Tensor::matadd(embed_mat[TX[seq][i]], pos_mat[i]));
+				}
 				X.push_back(temp);
 			}
-			
+
 			vector<vector<vector<float>>> X_input;
-			vector<vector<vector<float>>> X_bnorm;
-			vector<vector<vector<float>>> X_meaned;
 			vector<vector<vector<float>>> loss_gradients;
 			vector<vector<vector<float>>> hidden_states;
 			vector<vector<float>> dw_vocab(embed_size, vector<float>(vocab_size, 0.0f));
@@ -202,38 +203,92 @@ public:
 			vector<vector<vector<vector<float>>>> dropout_mask_mlp;
 			vector<vector<vector<vector<float>>>> gelu_output;
 
-			vector<vector<float>> mean;
-			vector<vector<float>> var;
-			vector<vector<float>> std;
+			vector<vector<vector<vector<float>>>> l1_X_norm;
+			vector<vector<vector<vector<float>>>> l1_X_meaned;
+			vector<vector<vector<float>>> l1_mean;
+			vector<vector<vector<float>>> l1_var;
+			vector<vector<vector<float>>> l1_std;
+
+			vector<vector<vector<vector<float>>>> l2_X_norm;
+			vector<vector<vector<vector<float>>>> l2_X_meaned;
+			vector<vector<vector<float>>> l2_mean;
+			vector<vector<vector<float>>> l2_var;
+			vector<vector<vector<float>>> l2_std;
+
+			vector<vector<vector<float>>> final_X_norm;
+			vector<vector<vector<float>>> final_X_meaned;
+			vector<vector<float>> final_mean;
+			vector<vector<float>> final_var;
+			vector<vector<float>> final_std;
 			
+			vector<vector<float>> dw2(hidden_size, vector<float>(embed_size, 0.0f));
+
 			X_input.reserve(batch_size);
 			
 			loss_gradients.reserve(batch_size);
 			hidden_states.reserve(batch_size);
 			
-			X_bnorm.reserve(batch_size);
-			mean.reserve(batch_size);
-			var.reserve(batch_size);
-			std.reserve(batch_size);
+			dy.reserve(batch_size);
 			dropout_mask_mlp.reserve(batch_size);
 			gelu_output.reserve(batch_size);
-			
-			float loss = 0.0f;
 
+			l1_X_norm.reserve(batch_size);
+			l1_X_meaned.reserve(batch_size);
+			l1_mean.reserve(batch_size);
+			l1_var.reserve(batch_size);
+			l1_std.reserve(batch_size);
+
+			l2_X_norm.reserve(batch_size);
+			l2_X_meaned.reserve(batch_size);
+			l2_mean.reserve(batch_size);
+			l2_var.reserve(batch_size);
+			l2_std.reserve(batch_size);
+
+			final_X_norm.reserve(batch_size);
+			final_X_meaned.reserve(batch_size);
+			final_mean.reserve(batch_size);
+			final_var.reserve(batch_size);
+			final_std.reserve(batch_size);
+				
+			float loss = 0.0f;
 			flag ? cout << "Batch " << ct << "Forward pass Started...." << endl : cout << "";
 			flag ? cout << "================================================================" << endl : cout << "";
 			for (int seq = 0; seq < batch_size; ++seq)
 			{
-				flag ? cout << "===========================================================" << endl : cout << "";
+				vector<vector<vector<float>>> temp;
+				vector<vector<vector<float>>> temp1;
+
+				vector<vector<vector<float>>> t_l1_X_norm;
+				vector<vector<vector<float>>> t_l1_X_meaned;
+				vector<vector<float>> t_l1_mean;
+				vector<vector<float>> t_l1_var;
+				vector<vector<float>> t_l1_std;
+
+				vector<vector<vector<float>>> t_l2_X_norm;
+				vector<vector<vector<float>>> t_l2_X_meaned;
+				vector<vector<float>> t_l2_mean;
+				vector<vector<float>> t_l2_var;
+				vector<vector<float>> t_l2_std;
+				
+				t_l1_X_norm.reserve(block_size);
+				t_l1_X_meaned.reserve(block_size);
+				t_l1_mean.reserve(block_size);
+				t_l1_var.reserve(block_size);
+				t_l1_std.reserve(block_size);
+
+				t_l2_X_norm.reserve(block_size);
+				t_l2_X_meaned.reserve(block_size);
+				t_l2_mean.reserve(block_size);
+				t_l2_var.reserve(block_size);
+				t_l2_std.reserve(block_size);
+			
+				flag ? cout << "=======================================================" << endl : cout << "";
 				flag ? cout << "seq " << seq + 1 << " Started...." << endl : cout << "";
 				
 				flag ? cout << "Input Dropouting......" : cout << "";
 				auto dropout_mask = Tensor::dropout_mask(seq_len, embed_size, dropout_rate);
-				auto X_input2 = Tensor::dropout(X[seq], dropout_mask, dropout_prob);
+				auto X_input2 = Tensor::dropout(X[seq], dropout_mask, dropout_prob);	
 				flag ? cout << "Done......" << endl : cout << "";
-
-				vector<vector<vector<float>>> temp;
-				vector<vector<vector<float>>> temp1;
 
 				for (int i = 0; i < block_size; ++i)
 				{
@@ -243,7 +298,26 @@ public:
 					auto residual = X_input2;
 					
 					flag ? cout << "Block First Layer normalizing....." : cout << "";
-					Tensor::layer_norm(X_input2, gamma, beta);
+					
+					t_l1_X_norm.push_back(X_input2);
+					
+					vector<vector<float>> t2_l1_X_meaned;
+					vector<float> t2_l1_mean;
+					vector<float> t2_l1_var;
+					vector<float> t2_l1_std;
+					
+					t2_l1_X_meaned.reserve(seq_len);
+					t2_l1_mean.reserve(seq_len);
+					t2_l1_var.reserve(seq_len);
+					t2_l1_std.reserve(seq_len);
+
+					Tensor::layer_norm(X_input2, gamma, beta, t2_l1_mean, t2_l1_var, t2_l1_std, t2_l1_X_meaned);
+
+					t_l1_mean.push_back(t2_l1_mean);
+					t_l1_var.push_back(t2_l1_var);
+					t_l1_std.push_back(t2_l1_std);
+					t_l1_X_meaned.push_back(t2_l1_X_meaned);
+
 					flag ? cout << "Done..." << endl : cout << "";
 					
 					flag ? cout << "Block Linear Projecting....." : cout << "";
@@ -262,10 +336,28 @@ public:
 					flag ? cout << "First Residual Adding......" : cout << "";
 					X_input2 = Tensor::matadd(residual, X_input2);
 					flag ? cout << "Done..." << endl : cout << "";
-
+					
 					residual = X_input2;
+
 					flag ? cout << "Block Second Layer normalizing....." : cout << "";
-					Tensor::layer_norm(X_input2, gamma, beta);
+					t_l2_X_norm.push_back(X_input2);
+					
+					vector<vector<float>> t2_l2_X_meaned;
+					vector<float> t2_l2_mean;
+					vector<float> t2_l2_var;
+					vector<float> t2_l2_std;
+					
+					t2_l2_X_meaned.reserve(seq_len);
+					t2_l2_mean.reserve(seq_len);
+					t2_l2_var.reserve(seq_len);
+					t2_l2_std.reserve(seq_len);
+
+					Tensor::layer_norm(X_input2, gamma, beta, t2_l2_mean, t2_l2_var, t2_l2_std, t2_l2_X_meaned);
+					
+					t_l2_mean.push_back(t2_l2_mean);
+					t_l2_var.push_back(t2_l2_var);
+					t_l2_std.push_back(t2_l2_std);
+					t_l2_X_meaned.push_back(t2_l2_X_meaned);
 					flag ? cout << "Done..." << endl << endl : cout << "";
 
 					flag ? cout << "Linear Layer Started......" << endl : cout << "";
@@ -300,18 +392,37 @@ public:
 				}
 				dropout_mask_mlp.push_back(temp1);
 				gelu_output.push_back(temp);
+				
+				l1_X_norm.push_back(t_l1_X_norm);
+				l1_mean.push_back(t_l1_mean);
+				l1_var.push_back(t_l1_var);
+				l1_std.push_back(t_l1_std);
+				l1_X_meaned.push_back(t_l1_X_meaned);
+
+				l2_X_norm.push_back(t_l2_X_norm);
+				l2_mean.push_back(t_l2_mean);
+				l2_var.push_back(t_l2_var);
+				l2_std.push_back(t_l2_std);
+				l2_X_meaned.push_back(t_l2_X_meaned);
 
 				flag ? cout << "Final Layer normalizing....." : cout << "";
-				X_bnorm.push_back(X_input2);
-				auto [m, v, s, Xa] = Tensor::final_layer_norm(X_input2, gamma, beta);
-				mean.push_back(m);
-				var.push_back(v);
-				std.push_back(s);
-				X_meaned.push_back(Xa);
+	
+				vector<vector<float>> t2_final_X_meaned;
+				vector<float> t2_final_mean;
+				vector<float> t2_final_var;
+				vector<float> t2_final_std;
+
+				final_X_norm.push_back(X_input2);
+				Tensor::layer_norm(X_input2, gamma, beta, t2_final_mean, t2_final_var, t2_final_std, t2_final_X_meaned);
+				
+				final_mean.push_back(t2_final_mean);
+				final_var.push_back(t2_final_var);
+				final_std.push_back(t2_final_std);
+				final_X_meaned.push_back(t2_final_X_meaned);
+
 				hidden_states.push_back(X_input2);
 				flag ? cout << "Done..." << endl : cout << "";
-				flag ? cout << "Done..." << endl : cout << "";
-				
+
 				flag ? cout << "LM Head Projecting....." : cout << "";
 				X_input2 = Tensor::dot_product(X_input2, embed_mat_t);
 				flag ? cout << "Done..." << endl : cout << "";
@@ -319,7 +430,7 @@ public:
 				flag ? cout << "Softmax....." : cout << "";
 				Function::softmax(X_input2);
 				flag ? cout << "Done..." << endl : cout << "";
-
+				
 				flag ? cout << "Calculating Loss....." : cout << "";
 				for (int lss = 0; lss < seq_len; ++lss) loss += -log(X_input2[lss][Y[batch][lss]]);
 				X_input.push_back(X_input2);
@@ -329,14 +440,14 @@ public:
 				vector<vector<float>> gradient;
 				for (int lss = 0; lss < seq_len; ++lss)
 				{
-					X_input2[lss][Y[batch][lss]] -= 1;
+					X_input2[lss][Y[batch][lss]] -= 1.0f;
 					gradient.push_back(X_input2[lss]);
 				}
 				loss_gradients.push_back(gradient);
 				flag ? cout << "Done..." << endl : cout << "";
 
 				flag ? cout << "Done..." << endl << endl : cout << "";
-				flag ? cout << "===========================================================" << endl : cout << "";
+				flag ? cout << "=======================================================" << endl : cout << "";
 			}
 			flag ? cout << "Calculating Batch " << ct << " Loss....." : cout << "";
 			flag ? cout << "Done..." : cout << "";
@@ -348,31 +459,29 @@ public:
 			flag ? cout << "================================================================" << endl << endl : cout << "";
 
 			flag ? cout << "LM head Backward....." : cout << "";
-			dy.reserve(batch_size);
 			for (int gra = 0; gra < batch_size; ++gra)
 			{
 				auto h_t = Tensor::transpose(hidden_states[gra]);
 				auto sum = Tensor::dot_product(h_t, loss_gradients[gra]);
 				dw_vocab = Tensor::matadd(dw_vocab, sum);
-		
-				auto embed_mat_t2 = Tensor::transpose(embed_mat_t);
+	
+				auto embed_mat_t2 = Tensor::transpose2(embed_mat_t);
 				dy.push_back(Tensor::dot_product(loss_gradients[gra], embed_mat_t2));
 			}
-			flag ? cout << "Done..." : cout << "";
+			flag ? cout << "Done..." << endl: cout << "";
 
 			flag ? cout << "Final Layer Norm Backward....." : cout << "";
 			auto dbeta = Tensor::add(dy);
-			auto dg = Tensor::matmul_e(dy, X_meaned);
+			auto dg = Tensor::matmul_e(dy, final_X_meaned);
 			auto dgamma = Tensor::add(dg);
 			auto dx_hat = Tensor::normalized_gradient(dy, gamma);
-			auto dvar = Tensor::variance_gradient(X_bnorm, dx_hat, mean, var);
-			auto dmean = Tensor::mean_gradient(dx_hat, X_meaned, dvar, std);
-			dy = Tensor::input_gradient(dx_hat, X_meaned, dvar, dmean, std);
+			auto dvar = Tensor::variance_gradient(final_X_norm, dx_hat, final_mean, final_var);
+			auto dmean = Tensor::mean_gradient(dx_hat, final_X_meaned, dvar, final_std);
+			dy = Tensor::input_gradient(dx_hat, final_X_meaned, dvar, dmean, final_std);
 			flag ? cout << "Done..." << endl: cout << "";
 
 			flag ? cout << "Transfomer Blocks Backwarding Started....." : cout << "";
-
-
+			
 			flag ? cout << "Done..." << endl: cout << "";
 
 			flag ? cout << "Batch " << ct << "Backward pass ended...." << endl : cout << "";

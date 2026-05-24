@@ -80,47 +80,157 @@ namespace Tensor
         }
     }
 
-    __global__ void layernorm_kernel(
-        float *data,
-        float *gamma,
-        float *beta,
-        int seq_len,
-        int embed_size)
+    inline void layer_norm(
+        std::vector<std::vector<float>>& value,
+        std::vector<float>& gamma,
+        std::vector<float>& beta,
+
+        std::vector<float>& m,
+        std::vector<float>& v,
+        std::vector<float>& s,
+
+        std::vector<std::vector<float>>& X_norm)
     {
-        int row = blockIdx.x * blockDim.x + threadIdx.x;
+        int seq_len = value.size();
+        int embed_size = value[0].size();
 
-        if (row < seq_len)
+        int N = seq_len * embed_size;
+
+        // flatten input
+        std::vector<float> flat(N);
+
+        for (int i = 0; i < seq_len; i++)
+            for (int j = 0; j < embed_size; j++)
+                flat[i * embed_size + j] =
+                    value[i][j];
+
+        // resize outputs
+        m.resize(seq_len);
+        v.resize(seq_len);
+        s.resize(seq_len);
+
+        std::vector<float> flat_xnorm(N);
+
+        // device memory
+        float *d_value;
+
+        float *d_gamma;
+        float *d_beta;
+
+        float *d_mean;
+        float *d_var;
+        float *d_std;
+
+        float *d_xnorm;
+
+        cudaMalloc(&d_value, N * sizeof(float));
+
+        cudaMalloc(&d_gamma,
+                   embed_size * sizeof(float));
+
+        cudaMalloc(&d_beta,
+                   embed_size * sizeof(float));
+
+        cudaMalloc(&d_mean,
+                   seq_len * sizeof(float));
+
+        cudaMalloc(&d_var,
+                   seq_len * sizeof(float));
+
+        cudaMalloc(&d_std,
+                   seq_len * sizeof(float));
+
+        cudaMalloc(&d_xnorm,
+                   N * sizeof(float));
+
+        cudaMemcpy(d_value,
+                   flat.data(),
+                   N * sizeof(float),
+                   cudaMemcpyHostToDevice);
+
+        cudaMemcpy(d_gamma,
+                   gamma.data(),
+                   embed_size * sizeof(float),
+                   cudaMemcpyHostToDevice);
+
+        cudaMemcpy(d_beta,
+                   beta.data(),
+                   embed_size * sizeof(float),
+                   cudaMemcpyHostToDevice);
+
+        int threads = 256;
+
+        int blocks =
+            (seq_len + threads - 1) / threads;
+
+        layernorm_kernel<<<blocks, threads>>>(
+            d_value,
+            d_gamma,
+            d_beta,
+            d_mean,
+            d_var,
+            d_std,
+            d_xnorm,
+            seq_len,
+            embed_size
+        );
+
+        // copy back
+        cudaMemcpy(flat.data(),
+                   d_value,
+                   N * sizeof(float),
+                   cudaMemcpyDeviceToHost);
+
+        cudaMemcpy(m.data(),
+                   d_mean,
+                   seq_len * sizeof(float),
+                   cudaMemcpyDeviceToHost);
+
+        cudaMemcpy(v.data(),
+                   d_var,
+                   seq_len * sizeof(float),
+                   cudaMemcpyDeviceToHost);
+
+        cudaMemcpy(s.data(),
+                   d_std,
+                   seq_len * sizeof(float),
+                   cudaMemcpyDeviceToHost);
+
+        cudaMemcpy(flat_xnorm.data(),
+                   d_xnorm,
+                   N * sizeof(float),
+                   cudaMemcpyDeviceToHost);
+
+        // free
+        cudaFree(d_value);
+
+        cudaFree(d_gamma);
+        cudaFree(d_beta);
+
+        cudaFree(d_mean);
+        cudaFree(d_var);
+        cudaFree(d_std);
+
+        cudaFree(d_xnorm);
+
+        // reshape outputs
+        X_norm.assign(
+            seq_len,
+            std::vector<float>(embed_size)
+        );
+
+        for (int i = 0; i < seq_len; i++)
         {
-            int offset = row * embed_size;
-
-            // mean
-            float mean = 0.0f;
-
-            for (int k = 0; k < embed_size; k++)
-                mean += data[offset + k];
-
-            mean /= embed_size;
-
-            // variance
-            float variance = 0.0f;
-
-            for (int k = 0; k < embed_size; k++)
+            for (int j = 0; j < embed_size; j++)
             {
-                float diff = data[offset + k] - mean;
-                variance += diff * diff;
-            }
+                int idx =
+                    i * embed_size + j;
 
-            variance /= embed_size;
+                X_norm[i][j] =
+                    flat_xnorm[idx];
 
-            float std = sqrtf(variance + 1e-5f);
-
-            // normalize + affine
-            for (int k = 0; k < embed_size; k++)
-            {
-                data[offset + k] =
-                    gamma[k] *
-                    ((data[offset + k] - mean) / std)
-                    + beta[k];
+                value[i][j] =
+                    flat[idx];
             }
         }
     }
@@ -161,65 +271,6 @@ namespace Tensor
         if (i < N)
         {
             C[i] = A[i] + B[i];
-        }
-    }
-
-    __global__ void final_layernorm_kernel(
-        float *value,
-        float *gamma,
-        float *beta,
-        float *mean_out,
-        float *var_out,
-        float *std_out,
-        float *xnorm_out,
-        int seq_len,
-        int embed_size)
-    {
-        int row = blockIdx.x * blockDim.x + threadIdx.x;
-
-        if (row < seq_len)
-        {
-            int offset = row * embed_size;
-
-            // mean
-            float mean = 0.0f;
-
-            for (int k = 0; k < embed_size; k++)
-                mean += value[offset + k];
-
-            mean /= embed_size;
-
-            mean_out[row] = mean;
-
-            // variance
-            float variance = 0.0f;
-
-            for (int k = 0; k < embed_size; k++)
-            {
-                float diff = value[offset + k] - mean;
-                variance += diff * diff;
-            }
-
-            variance /= embed_size;
-
-            var_out[row] = variance;
-
-            // std
-            float std = sqrtf(variance + 1e-5f);
-
-            std_out[row] = std;
-
-            // normalize + affine
-            for (int k = 0; k < embed_size; k++)
-            {
-                float norm =
-                    (value[offset + k] - mean) / std;
-
-                xnorm_out[offset + k] = norm;
-
-                value[offset + k] =
-                    gamma[k] * norm + beta[k];
-            }
         }
     }
 
