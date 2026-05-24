@@ -321,7 +321,7 @@ public:
 				flag ? cout << "Done..." << endl : cout << "";
 
 				flag ? cout << "Calculating Loss....." : cout << "";
-				for (int lss = 0; lss < seq_len; ++lss) loss += -log(X_input2[lss][Y[i][lss]]);
+				for (int lss = 0; lss < seq_len; ++lss) loss += -log(X_input2[lss][Y[batch][lss]]);
 				X_input.push_back(X_input2);
 				flag ? cout << "Done..." << endl : cout << "";
 
@@ -329,7 +329,7 @@ public:
 				vector<vector<float>> gradient;
 				for (int lss = 0; lss < seq_len; ++lss)
 				{
-					X_input2[lss][Y[i][lss]] -= 1;
+					X_input2[lss][Y[batch][lss]] -= 1;
 					gradient.push_back(X_input2[lss]);
 				}
 				loss_gradients.push_back(gradient);
