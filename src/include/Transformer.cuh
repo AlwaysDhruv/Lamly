@@ -36,8 +36,9 @@ class Transformer
 	vector<vector<float>> pos_mat;
 	vector<vector<float>> embed_x;
 
-	vector<vector<float>> Y;
-	vector<vector<vector<float>>> X;
+	vector<vector<long long>> Y;
+	vector<vector<long long>> TX;
+
 
 	vector<vector<float>> wq;
 	vector<vector<float>> wk;
@@ -93,13 +94,18 @@ public:
 			wv.reserve(embed_size);
 			wo.reserve(embed_size);
 			w1.reserve(embed_size);
-			w1.reserve(hidden_size);
+			w2.reserve(hidden_size);
+			embed_mat.reserve(vocab_size);
+			pos_mat.reserve(seq_len);
+
 			wq = Tensor::random(embed_size, embed_size);
 			wk = Tensor::random(embed_size, embed_size);
 			wv = Tensor::random(embed_size, embed_size);
 			wo = Tensor::random(embed_size, embed_size);
 			w1 = Tensor::random(embed_size, hidden_size);
 			w2 = Tensor::random(hidden_size, embed_size);
+			embed_mat = Random::weights(vocab_size, embed_size);
+			pos_mat = Random::weights(seq_len, embed_size);			
 			cout << "Done....." << endl;
 		}
 		else cout << "config.ini Have Problem...." << endl;
@@ -107,6 +113,9 @@ public:
 
 	void input_embedding()
 	{
+		vector<long long> token_x;
+		vector<long long> token_y;
+
 		token_x.reserve(xy_size);
 		token_y.reserve(xy_size);
 
@@ -116,33 +125,23 @@ public:
 			token_y.push_back(token_ids[j]);	
 		}
 
-		embed_mat.reserve(vocab_size);
-		pos_mat.reserve(xy_size);
-
-		embed_mat = Tensor::random(vocab_size, embed_size);
-		pos_mat = Tensor::random(xy_size, embed_size);
-
-		embed_x.reserve(xy_size);
-		
-		for (int i = 0; i < xy_size; ++i) embed_x.push_back(Tensor::matadd(embed_mat[token_x[i]], pos_mat[i]));
-
-		X.reserve(num_seq);
+		TX.reserve(num_seq);
 		Y.reserve(num_seq);
 
 		for (int i = 0; i < num_seq; ++i)
 		{
-			vector<vector<float>> temp;
-			vector<float> temp2;
-			
+			vector<long long> temp;
+			vector<long long> temp2;
+		
 			temp.reserve(seq_len + i);
 			temp2.reserve(seq_len);
 
 			for (int j = 0 + i; j < seq_len + i; ++j)
 			{
-				temp.push_back(embed_x[j]);
+				temp.push_back(token_x[j]);
 				temp2.push_back(token_y[j]);
 			}
-			X.push_back(temp);
+			TX.push_back(temp);
 			Y.push_back(temp2);
 		}
 	}
@@ -181,6 +180,17 @@ public:
 		{
 			flag ? cout << "======================================================================" << endl : cout << "";
 			flag ? cout << "Batch " << ++ct << " Started...." << endl : cout << "";
+
+			vector<vector<vector<float>>> X;
+			X.reserve(batch_size);
+			for (int seq = batch; seq < batch_size + batch; ++seq)
+			{
+				vector<vector<float>> temp;
+				temp.reserve(seq_len);
+				
+				for (int i = 0; i < seq_len; ++i) temp.push_back(Tensor::matadd(embed_mat[TX[seq][i]], pos_mat[i]));
+				X.push_back(temp);
+			}
 			
 			vector<vector<vector<float>>> X_input;
 			vector<vector<vector<float>>> X_bnorm;
@@ -209,8 +219,10 @@ public:
 			gelu_output.reserve(batch_size);
 			
 			float loss = 0.0f;
-			
-			for (int seq = i, j = 0; seq < batch_size + i, j < batch_size; ++seq, ++j)
+
+			flag ? cout << "Batch " << ct << "Forward pass Started...." << endl : cout << "";
+			flag ? cout << "================================================================" << endl : cout << "";
+			for (int seq = 0; seq < batch_size; ++seq)
 			{
 				flag ? cout << "===========================================================" << endl : cout << "";
 				flag ? cout << "seq " << seq + 1 << " Started...." << endl : cout << "";
@@ -327,8 +339,13 @@ public:
 				flag ? cout << "===========================================================" << endl : cout << "";
 			}
 			flag ? cout << "Calculating Batch " << ct << " Loss....." : cout << "";
-			flag ? cout << "Done..." : cout << "";			
+			flag ? cout << "Done..." : cout << "";
 			flag ? cout << "Batch " << ct << " Loss : " << loss / (batch_size * seq_len) << endl : cout << "Batch " << ++ct << " Loss : " << loss / (batch_size * seq_len) << endl;
+			flag ? cout << "Batch " << ct << " Forward pass ended...." << endl : cout << "";
+			flag ? cout << "================================================================" << endl << endl : cout << "";
+
+			flag ? cout << "Batch " << ct << " Backward pass Started...." << endl : cout << "";
+			flag ? cout << "================================================================" << endl << endl : cout << "";
 
 			flag ? cout << "LM head Backward....." : cout << "";
 			dy.reserve(batch_size);
@@ -353,9 +370,13 @@ public:
 			dy = Tensor::input_gradient(dx_hat, X_meaned, dvar, dmean, std);
 			flag ? cout << "Done..." << endl: cout << "";
 
-			flag ? cout << "Transfomer Blocks Backward....." : cout << "";
+			flag ? cout << "Transfomer Blocks Backwarding Started....." : cout << "";
+
 
 			flag ? cout << "Done..." << endl: cout << "";
+
+			flag ? cout << "Batch " << ct << "Backward pass ended...." << endl : cout << "";
+			flag ? cout << "================================================================" << endl << endl : cout << "";
 
 			flag ? cout << "Batch " << ct << " ended...." << endl : cout << "";
 		}
