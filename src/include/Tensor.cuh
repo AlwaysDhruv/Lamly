@@ -80,160 +80,6 @@ namespace Tensor
         }
     }
 
-    inline void layer_norm(
-        std::vector<std::vector<float>>& value,
-        std::vector<float>& gamma,
-        std::vector<float>& beta,
-
-        std::vector<float>& m,
-        std::vector<float>& v,
-        std::vector<float>& s,
-
-        std::vector<std::vector<float>>& X_norm)
-    {
-        int seq_len = value.size();
-        int embed_size = value[0].size();
-
-        int N = seq_len * embed_size;
-
-        // flatten input
-        std::vector<float> flat(N);
-
-        for (int i = 0; i < seq_len; i++)
-            for (int j = 0; j < embed_size; j++)
-                flat[i * embed_size + j] =
-                    value[i][j];
-
-        // resize outputs
-        m.resize(seq_len);
-        v.resize(seq_len);
-        s.resize(seq_len);
-
-        std::vector<float> flat_xnorm(N);
-
-        // device memory
-        float *d_value;
-
-        float *d_gamma;
-        float *d_beta;
-
-        float *d_mean;
-        float *d_var;
-        float *d_std;
-
-        float *d_xnorm;
-
-        cudaMalloc(&d_value, N * sizeof(float));
-
-        cudaMalloc(&d_gamma,
-                   embed_size * sizeof(float));
-
-        cudaMalloc(&d_beta,
-                   embed_size * sizeof(float));
-
-        cudaMalloc(&d_mean,
-                   seq_len * sizeof(float));
-
-        cudaMalloc(&d_var,
-                   seq_len * sizeof(float));
-
-        cudaMalloc(&d_std,
-                   seq_len * sizeof(float));
-
-        cudaMalloc(&d_xnorm,
-                   N * sizeof(float));
-
-        cudaMemcpy(d_value,
-                   flat.data(),
-                   N * sizeof(float),
-                   cudaMemcpyHostToDevice);
-
-        cudaMemcpy(d_gamma,
-                   gamma.data(),
-                   embed_size * sizeof(float),
-                   cudaMemcpyHostToDevice);
-
-        cudaMemcpy(d_beta,
-                   beta.data(),
-                   embed_size * sizeof(float),
-                   cudaMemcpyHostToDevice);
-
-        int threads = 256;
-
-        int blocks =
-            (seq_len + threads - 1) / threads;
-
-        layernorm_kernel<<<blocks, threads>>>(
-            d_value,
-            d_gamma,
-            d_beta,
-            d_mean,
-            d_var,
-            d_std,
-            d_xnorm,
-            seq_len,
-            embed_size
-        );
-
-        // copy back
-        cudaMemcpy(flat.data(),
-                   d_value,
-                   N * sizeof(float),
-                   cudaMemcpyDeviceToHost);
-
-        cudaMemcpy(m.data(),
-                   d_mean,
-                   seq_len * sizeof(float),
-                   cudaMemcpyDeviceToHost);
-
-        cudaMemcpy(v.data(),
-                   d_var,
-                   seq_len * sizeof(float),
-                   cudaMemcpyDeviceToHost);
-
-        cudaMemcpy(s.data(),
-                   d_std,
-                   seq_len * sizeof(float),
-                   cudaMemcpyDeviceToHost);
-
-        cudaMemcpy(flat_xnorm.data(),
-                   d_xnorm,
-                   N * sizeof(float),
-                   cudaMemcpyDeviceToHost);
-
-        // free
-        cudaFree(d_value);
-
-        cudaFree(d_gamma);
-        cudaFree(d_beta);
-
-        cudaFree(d_mean);
-        cudaFree(d_var);
-        cudaFree(d_std);
-
-        cudaFree(d_xnorm);
-
-        // reshape outputs
-        X_norm.assign(
-            seq_len,
-            std::vector<float>(embed_size)
-        );
-
-        for (int i = 0; i < seq_len; i++)
-        {
-            for (int j = 0; j < embed_size; j++)
-            {
-                int idx =
-                    i * embed_size + j;
-
-                X_norm[i][j] =
-                    flat_xnorm[idx];
-
-                value[i][j] =
-                    flat[idx];
-            }
-        }
-    }
 
     __global__ void dot_kernel(
         float *A,
@@ -469,6 +315,69 @@ namespace Tensor
         }
     }
 
+        __global__ void layernorm_kernel(
+        float *value,
+        float *gamma,
+        float *beta,
+        float *mean_out,
+        float *var_out,
+        float *std_out,
+        float *xnorm_out,
+        int seq_len,
+        int embed_size)
+    {
+        int row =
+            blockIdx.x * blockDim.x + threadIdx.x;
+
+        if (row < seq_len)
+        {
+            int offset =
+                row * embed_size;
+
+            // mean
+            float mean = 0.0f;
+
+            for (int k = 0; k < embed_size; k++)
+                mean += value[offset + k];
+
+            mean /= embed_size;
+
+            mean_out[row] = mean;
+
+            // variance
+            float variance = 0.0f;
+
+            for (int k = 0; k < embed_size; k++)
+            {
+                float diff =
+                    value[offset + k] - mean;
+
+                variance += diff * diff;
+            }
+
+            variance /= embed_size;
+
+            var_out[row] = variance;
+
+            // std
+            float std =
+                sqrtf(variance + 1e-5f);
+
+            std_out[row] = std;
+
+            // normalize + affine
+            for (int k = 0; k < embed_size; k++)
+            {
+                float norm =
+                    (value[offset + k] - mean) / std;
+
+                xnorm_out[offset + k] = norm;
+
+                value[offset + k] =
+                    gamma[k] * norm + beta[k];
+            }
+        }
+    }
     inline void check_cuda(cudaError_t err)
     {
         if (err != cudaSuccess)
@@ -480,71 +389,6 @@ namespace Tensor
 
             exit(EXIT_FAILURE);
         }
-    }
-
-    inline void layer_norm(
-        std::vector<std::vector<float>>& v,
-        std::vector<float>& gamma,
-        std::vector<float>& beta)
-    {
-        int seq_len = v.size();
-        int embed_size = v[0].size();
-
-        int N = seq_len * embed_size;
-
-        // flatten
-        std::vector<float> flat(N);
-
-        for (int i = 0; i < seq_len; i++)
-            for (int j = 0; j < embed_size; j++)
-                flat[i * embed_size + j] = v[i][j];
-
-        // device memory
-        float *d_data, *d_gamma, *d_beta;
-
-        cudaMalloc(&d_data, N * sizeof(float));
-        cudaMalloc(&d_gamma, embed_size * sizeof(float));
-        cudaMalloc(&d_beta, embed_size * sizeof(float));
-
-        cudaMemcpy(d_data,
-                   flat.data(),
-                   N * sizeof(float),
-                   cudaMemcpyHostToDevice);
-
-        cudaMemcpy(d_gamma,
-                   gamma.data(),
-                   embed_size * sizeof(float),
-                   cudaMemcpyHostToDevice);
-
-        cudaMemcpy(d_beta,
-                   beta.data(),
-                   embed_size * sizeof(float),
-                   cudaMemcpyHostToDevice);
-
-        int threads = 256;
-        int blocks = (seq_len + threads - 1) / threads;
-
-        layernorm_kernel<<<blocks, threads>>>(
-            d_data,
-            d_gamma,
-            d_beta,
-            seq_len,
-            embed_size
-        );
-
-        cudaMemcpy(flat.data(),
-                   d_data,
-                   N * sizeof(float),
-                   cudaMemcpyDeviceToHost);
-
-        cudaFree(d_data);
-        cudaFree(d_gamma);
-        cudaFree(d_beta);
-
-        // reshape back
-        for (int i = 0; i < seq_len; i++)
-            for (int j = 0; j < embed_size; j++)
-                v[i][j] = flat[i * embed_size + j];
     }
 
     inline std::vector<std::vector<float>>
@@ -1108,146 +952,6 @@ namespace Tensor
                 ans[i][j] = flatC[i * cols + j];
 
         return ans;
-    }
-
-    inline std::tuple<
-        std::vector<float>,
-        std::vector<float>,
-        std::vector<float>,
-        std::vector<std::vector<float>>
-    >
-    final_layer_norm(
-        std::vector<std::vector<float>>& value,
-        std::vector<float>& gamma,
-        std::vector<float>& beta)
-    {
-        int seq_len = value.size();
-        int embed_size = value[0].size();
-
-        int N = seq_len * embed_size;
-
-        // flatten
-        std::vector<float> flat(N);
-
-        for (int i = 0; i < seq_len; i++)
-            for (int j = 0; j < embed_size; j++)
-                flat[i * embed_size + j] = value[i][j];
-
-        // outputs
-        std::vector<float> mean(seq_len);
-        std::vector<float> variance(seq_len);
-        std::vector<float> stds(seq_len);
-
-        std::vector<float> flat_xnorm(N);
-
-        // device memory
-        float *d_value;
-        float *d_gamma;
-        float *d_beta;
-
-        float *d_mean;
-        float *d_var;
-        float *d_std;
-        float *d_xnorm;
-
-        cudaMalloc(&d_value, N * sizeof(float));
-        cudaMalloc(&d_gamma, embed_size * sizeof(float));
-        cudaMalloc(&d_beta, embed_size * sizeof(float));
-
-        cudaMalloc(&d_mean, seq_len * sizeof(float));
-        cudaMalloc(&d_var, seq_len * sizeof(float));
-        cudaMalloc(&d_std, seq_len * sizeof(float));
-
-        cudaMalloc(&d_xnorm, N * sizeof(float));
-
-        cudaMemcpy(d_value,
-                   flat.data(),
-                   N * sizeof(float),
-                   cudaMemcpyHostToDevice);
-
-        cudaMemcpy(d_gamma,
-                   gamma.data(),
-                   embed_size * sizeof(float),
-                   cudaMemcpyHostToDevice);
-
-        cudaMemcpy(d_beta,
-                   beta.data(),
-                   embed_size * sizeof(float),
-                   cudaMemcpyHostToDevice);
-
-        int threads = 256;
-        int blocks = (seq_len + threads - 1) / threads;
-
-        final_layernorm_kernel<<<blocks, threads>>>(
-            d_value,
-            d_gamma,
-            d_beta,
-            d_mean,
-            d_var,
-            d_std,
-            d_xnorm,
-            seq_len,
-            embed_size
-        );
-
-        // copy back
-        cudaMemcpy(flat.data(),
-                   d_value,
-                   N * sizeof(float),
-                   cudaMemcpyDeviceToHost);
-
-        cudaMemcpy(mean.data(),
-                   d_mean,
-                   seq_len * sizeof(float),
-                   cudaMemcpyDeviceToHost);
-
-        cudaMemcpy(variance.data(),
-                   d_var,
-                   seq_len * sizeof(float),
-                   cudaMemcpyDeviceToHost);
-
-        cudaMemcpy(stds.data(),
-                   d_std,
-                   seq_len * sizeof(float),
-                   cudaMemcpyDeviceToHost);
-
-        cudaMemcpy(flat_xnorm.data(),
-                   d_xnorm,
-                   N * sizeof(float),
-                   cudaMemcpyDeviceToHost);
-
-        // free
-        cudaFree(d_value);
-        cudaFree(d_gamma);
-        cudaFree(d_beta);
-
-        cudaFree(d_mean);
-        cudaFree(d_var);
-        cudaFree(d_std);
-        cudaFree(d_xnorm);
-
-        // reshape xnorm
-        std::vector<std::vector<float>> X_norm(
-            seq_len,
-            std::vector<float>(embed_size)
-        );
-
-        for (int i = 0; i < seq_len; i++)
-            for (int j = 0; j < embed_size; j++)
-            {
-                int idx = i * embed_size + j;
-
-                X_norm[i][j] = flat_xnorm[idx];
-
-                value[i][j] = flat[idx];
-            }
-
-        return {
-            mean,
-            variance,
-            stds,
-            X_norm
-        };
     }
 
     inline std::vector<float> add(
@@ -1886,6 +1590,161 @@ namespace Tensor
                 }
 
         return ans;
+    }
+
+        inline void layer_norm(
+        std::vector<std::vector<float>>& value,
+        std::vector<float>& gamma,
+        std::vector<float>& beta,
+
+        std::vector<float>& m,
+        std::vector<float>& v,
+        std::vector<float>& s,
+
+        std::vector<std::vector<float>>& X_norm)
+    {
+        int seq_len = value.size();
+        int embed_size = value[0].size();
+
+        int N = seq_len * embed_size;
+
+        // flatten input
+        std::vector<float> flat(N);
+
+        for (int i = 0; i < seq_len; i++)
+            for (int j = 0; j < embed_size; j++)
+                flat[i * embed_size + j] =
+                    value[i][j];
+
+        // resize outputs
+        m.resize(seq_len);
+        v.resize(seq_len);
+        s.resize(seq_len);
+
+        std::vector<float> flat_xnorm(N);
+
+        // device memory
+        float *d_value;
+
+        float *d_gamma;
+        float *d_beta;
+
+        float *d_mean;
+        float *d_var;
+        float *d_std;
+
+        float *d_xnorm;
+
+        cudaMalloc(&d_value, N * sizeof(float));
+
+        cudaMalloc(&d_gamma,
+                   embed_size * sizeof(float));
+
+        cudaMalloc(&d_beta,
+                   embed_size * sizeof(float));
+
+        cudaMalloc(&d_mean,
+                   seq_len * sizeof(float));
+
+        cudaMalloc(&d_var,
+                   seq_len * sizeof(float));
+
+        cudaMalloc(&d_std,
+                   seq_len * sizeof(float));
+
+        cudaMalloc(&d_xnorm,
+                   N * sizeof(float));
+
+        cudaMemcpy(d_value,
+                   flat.data(),
+                   N * sizeof(float),
+                   cudaMemcpyHostToDevice);
+
+        cudaMemcpy(d_gamma,
+                   gamma.data(),
+                   embed_size * sizeof(float),
+                   cudaMemcpyHostToDevice);
+
+        cudaMemcpy(d_beta,
+                   beta.data(),
+                   embed_size * sizeof(float),
+                   cudaMemcpyHostToDevice);
+
+        int threads = 256;
+
+        int blocks =
+            (seq_len + threads - 1) / threads;
+
+        layernorm_kernel<<<blocks, threads>>>(
+            d_value,
+            d_gamma,
+            d_beta,
+            d_mean,
+            d_var,
+            d_std,
+            d_xnorm,
+            seq_len,
+            embed_size
+        );
+
+        // copy back
+        cudaMemcpy(flat.data(),
+                   d_value,
+                   N * sizeof(float),
+                   cudaMemcpyDeviceToHost);
+
+        cudaMemcpy(m.data(),
+                   d_mean,
+                   seq_len * sizeof(float),
+                   cudaMemcpyDeviceToHost);
+
+        cudaMemcpy(v.data(),
+                   d_var,
+                   seq_len * sizeof(float),
+                   cudaMemcpyDeviceToHost);
+
+        cudaMemcpy(s.data(),
+                   d_std,
+                   seq_len * sizeof(float),
+                   cudaMemcpyDeviceToHost);
+
+        cudaMemcpy(flat_xnorm.data(),
+                   d_xnorm,
+                   N * sizeof(float),
+                   cudaMemcpyDeviceToHost);
+
+        // free
+        cudaFree(d_value);
+
+        cudaFree(d_gamma);
+        cudaFree(d_beta);
+
+        cudaFree(d_mean);
+        cudaFree(d_var);
+        cudaFree(d_std);
+
+        cudaFree(d_xnorm);
+
+        // reshape outputs
+        X_norm.assign(
+            seq_len,
+            std::vector<float>(embed_size)
+        );
+
+        for (int i = 0; i < seq_len; i++)
+        {
+            for (int j = 0; j < embed_size; j++)
+            {
+                int idx =
+                    i * embed_size + j;
+
+                X_norm[i][j] =
+                    flat_xnorm[idx];
+
+                value[i][j] =
+                    flat[idx];
+            }
+        }
     }
 }
 #endif

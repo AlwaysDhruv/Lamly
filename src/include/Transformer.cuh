@@ -175,7 +175,7 @@ public:
 	void Transformers()
 	{
 		int ct = 0;
-		embed_mat_t = Tensor::transpose2(embed_mat);
+		embed_mat_t = Tensor::transpose(embed_mat);
 
 		for (int batch = 0; batch < num_seq; batch+=batch_size)
 		{
@@ -465,7 +465,7 @@ public:
 				auto sum = Tensor::dot_product(h_t, loss_gradients[gra]);
 				dw_vocab = Tensor::matadd(dw_vocab, sum);
 	
-				auto embed_mat_t2 = Tensor::transpose2(embed_mat_t);
+				auto embed_mat_t2 = Tensor::transpose(embed_mat_t);
 				dy.push_back(Tensor::dot_product(loss_gradients[gra], embed_mat_t2));
 			}
 			flag ? cout << "Done..." << endl: cout << "";
@@ -481,7 +481,24 @@ public:
 			flag ? cout << "Done..." << endl: cout << "";
 
 			flag ? cout << "Transfomer Blocks Backwarding Started....." : cout << "";
-			
+			Debug::shape(l1_X_norm);
+			Debug::shape(l1_mean);
+			Debug::shape(l1_var);
+			Debug::shape(l1_std);
+			Debug::shape(l1_X_meaned);
+
+			Debug::shape(l2_X_norm);
+			Debug::shape(l2_mean);
+			Debug::shape(l2_var);
+			Debug::shape(l2_std);
+			Debug::shape(l2_X_meaned);
+
+			Debug::shape(final_X_norm);
+			Debug::shape(final_mean);
+			Debug::shape(final_var);
+			Debug::shape(final_std);
+			Debug::shape(final_X_meaned);
+			break;
 			flag ? cout << "Done..." << endl: cout << "";
 
 			flag ? cout << "Batch " << ct << "Backward pass ended...." << endl : cout << "";
