@@ -38,7 +38,7 @@ namespace Attension
 			vector<vector<float>> scaled = score;
 			vector<vector<float>> masked = score;
 
-			Tensor::casual_mask(score, scale, scaled, masked);
+			Tensor::causal_mask(score, scale, scaled, masked);
 			scaled_score.push_back(scaled);
 			masked_score.push_back(masked);
 
