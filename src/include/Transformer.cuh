@@ -233,6 +233,8 @@ public:
 			vector<vector<vector<vector<vector<float>>>>> attension_out;
 			vector<vector<vector<vector<float>>>> merged_heads;
 			vector<vector<vector<vector<float>>>> attension_projected;
+			vector<vector<vector<vector<float>>>> attension_mask;
+			vector<vector<vector<vector<float>>>> attension_residual;
 			
 			vector<vector<float>> dw2(hidden_size, vector<float>(embed_size, 0.0f));
 
@@ -278,6 +280,8 @@ public:
 			attension_out.reserve(batch_size);
 			merged_heads.reserve(batch_size);
 			attension_projected.reserve(batch_size);
+			attension_mask.reserve(batch_size);
+			attension_residual.reserve(batch_size);
 
 			float loss = 0.0f;
 			
@@ -316,6 +320,8 @@ public:
 				vector<vector<vector<vector<float>>>> t_attension_out;
 				vector<vector<vector<float>>> t_merged_heads;
 				vector<vector<vector<float>>> t_attension_projected;
+				vector<vector<vector<float>>> t_attension_mask;
+				vector<vector<vector<float>>> t_attension_residual;
 
 				t_l1_X.reserve(block_size);
 				t_l1_X_STD.reserve(block_size);
@@ -344,6 +350,8 @@ public:
 				t_attension_out.reserve(block_size);
 				t_merged_heads.reserve(block_size);
 				t_attension_projected.reserve(block_size);
+				t_attension_mask.reserve(block_size);
+				t_attension_residual.reserve(block_size);
 
 				flag ? cout << "=======================================================" << endl : cout << "";
 				flag ? cout << "seq " << seq + 1 << " Started...." << endl : cout << "";
@@ -426,11 +434,13 @@ public:
 					flag ? cout << "Done..." << endl : cout << "";
 
 					flag ? cout << "Attension Score Dropouting......" : cout << "";
-					dropout_mask = Tensor::dropout_mask(seq_len, embed_size, dropout_rate);
+					dropout_mask = Random::dropout_mask(seq_len, embed_size, dropout_rate);
+					t_attension_mask.push_back(dropout_mask);
 					X_input2 = Tensor::dropout(attension, dropout_mask, dropout_prob);
 					flag ? cout << "Done..." << endl : cout << "";
 
 					flag ? cout << "First Residual Adding......" : cout << "";
+					t_attension_residual.push_back(residual);
 					X_input2 = Tensor::matadd(residual, X_input2);
 					flag ? cout << "Done..." << endl : cout << "";
 					
@@ -518,6 +528,8 @@ public:
 				attension_out.push_back(t_attension_out);
 				merged_heads.push_back(t_merged_heads);
 				attension_projected.push_back(t_attension_projected);
+				attension_mask.push_back(t_attension_mask);
+				attension_residual.push_back(t_attension_residual);				
 
 				flag ? cout << "Final Layer normalizing....." : cout << "";
 	
