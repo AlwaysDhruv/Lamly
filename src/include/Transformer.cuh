@@ -4,9 +4,9 @@
 #include <iostream>
 #include <fstream>
 #include <cmath>
-#include "Tensor.hpp"
+#include "Tensor.cuh"
 #include "Display.hpp"
-#include "Attension.hpp"
+#include "Attension.cuh"
 #include "../utils/ini.h"
 
 class Transformer
@@ -219,12 +219,20 @@ public:
 			vector<vector<float>> final_std;
 
 			vector<vector<vector<vector<float>>>> QKV_input;
-			vector<vector<vector<vector<float>>>>Q_cache;
-			vector<vector<vector<vector<float>>>>K_cache;
-			vector<vector<vector<vector<float>>>>V_cache;
-			vector<vector<vector<vector<vector<float>>>>>Q_cache_H;
-			vector<vector<vector<vector<vector<float>>>>>K_cache_H;
-			vector<vector<vector<vector<vector<float>>>>>V_cache_H;
+			vector<vector<vector<vector<float>>>> Q_cache;
+			vector<vector<vector<vector<float>>>> K_cache;
+			vector<vector<vector<vector<float>>>> V_cache;
+			vector<vector<vector<vector<vector<float>>>>> Q_cache_H;
+			vector<vector<vector<vector<vector<float>>>>> K_cache_H;
+			vector<vector<vector<vector<vector<float>>>>> V_cache_H;
+
+			vector<vector<vector<vector<vector<float>>>>> attension_score;
+			vector<vector<vector<vector<vector<float>>>>> scaled_score;
+			vector<vector<vector<vector<vector<float>>>>> masked_score;
+			vector<vector<vector<vector<vector<float>>>>> attension_prob;
+			vector<vector<vector<vector<vector<float>>>>> attension_out;
+			vector<vector<vector<vector<float>>>> merged_heads;
+			vector<vector<vector<vector<float>>>> attension_projected;
 			
 			vector<vector<float>> dw2(hidden_size, vector<float>(embed_size, 0.0f));
 
@@ -256,10 +264,26 @@ public:
 			final_std.reserve(batch_size);
 				
 			QKV_input.reserve(batch_size);
+			Q_cache.reserve(batch_size);
+			K_cache.reserve(batch_size);
+			V_cache.reserve(batch_size);
+			Q_cache_H.reserve(batch_size);
+			K_cache_H.reserve(batch_size);
+			V_cache_H.reserve(batch_size);
+
+			attension_score.reserve(batch_size);
+			scaled_score.reserve(batch_size);
+			masked_score.reserve(batch_size);
+			attension_prob.reserve(batch_size);
+			attension_out.reserve(batch_size);
+			merged_heads.reserve(batch_size);
+			attension_projected.reserve(batch_size);
 
 			float loss = 0.0f;
+			
 			flag ? cout << "Batch " << ct << "Forward pass Started...." << endl : cout << "";
 			flag ? cout << "================================================================" << endl : cout << "";
+			
 			for (int seq = 0; seq < batch_size; ++seq)
 			{
 				vector<vector<vector<float>>> temp;
@@ -284,6 +308,14 @@ public:
 				vector<vector<vector<vector<float>>>> t_Q_cache_H;
 				vector<vector<vector<vector<float>>>> t_K_cache_H;
 				vector<vector<vector<vector<float>>>> t_V_cache_H;
+				
+				vector<vector<vector<vector<float>>>> t_attension_score;
+				vector<vector<vector<vector<float>>>> t_scaled_score;
+				vector<vector<vector<vector<float>>>> t_masked_score;
+				vector<vector<vector<vector<float>>>> t_attension_prob;
+				vector<vector<vector<vector<float>>>> t_attension_out;
+				vector<vector<vector<float>>> t_merged_heads;
+				vector<vector<vector<float>>> t_attension_projected;
 
 				t_l1_X.reserve(block_size);
 				t_l1_X_STD.reserve(block_size);
@@ -304,6 +336,14 @@ public:
 				t_Q_cache_H.reserve(block_size);
 				t_K_cache_H.reserve(block_size);
 				t_V_cache_H.reserve(block_size);
+
+				t_attension_score.reserve(block_size);
+				t_scaled_score.reserve(block_size);
+				t_masked_score.reserve(block_size);
+				t_attension_prob.reserve(block_size);
+				t_attension_out.reserve(block_size);
+				t_merged_heads.reserve(block_size);
+				t_attension_projected.reserve(block_size);
 
 				flag ? cout << "=======================================================" << endl : cout << "";
 				flag ? cout << "seq " << seq + 1 << " Started...." << endl : cout << "";
@@ -360,7 +400,29 @@ public:
 					flag ? cout << "Done..." << endl : cout << "";
 
 					flag ? cout << "Block attension Score Calculating....." : cout << "";
-					auto attension = Attension::score(q_h, k_h, v_h, wo);
+					vector<vector<vector<float>>> t2_attension_score;
+					vector<vector<vector<float>>> t2_scaled_score;
+					vector<vector<vector<float>>> t2_masked_score;
+					vector<vector<vector<float>>> t2_attension_prob;
+					vector<vector<vector<float>>> t2_attension_out;
+					vector<vector<float>> t2_merged_heads;
+					
+					t2_attension_score.reserve(head_size);
+					t2_scaled_score.reserve(head_size);
+					t2_masked_score.reserve(head_size);
+					t2_attension_prob.reserve(head_size);
+					t2_attension_out.reserve(head_size);
+					t2_merged_heads.reserve(head_size);
+
+					auto attension = Attension::score(q_h, k_h, v_h, wo, t2_attension_score, t2_scaled_score, t2_masked_score, t2_attension_prob, t2_attension_out, t2_merged_heads);
+					t_attension_score.push_back(t2_attension_score);
+					t_scaled_score.push_back(t2_scaled_score);
+					t_masked_score.push_back(t2_masked_score);
+					t_attension_prob.push_back(t2_attension_prob);
+					t_attension_out.push_back(t2_attension_out);
+					t_merged_heads.push_back(t2_merged_heads);
+					t_attension_projected.push_back(attension);
+
 					flag ? cout << "Done..." << endl : cout << "";
 
 					flag ? cout << "Attension Score Dropouting......" : cout << "";
@@ -448,6 +510,14 @@ public:
 				Q_cache_H.push_back(t_Q_cache_H);
 				K_cache_H.push_back(t_K_cache_H);
 				V_cache_H.push_back(t_V_cache_H);
+
+				attension_score.push_back(t_attension_score);
+				scaled_score.push_back(t_scaled_score);
+				masked_score.push_back(t_masked_score);
+				attension_prob.push_back(t_attension_prob);
+				attension_out.push_back(t_attension_out);
+				merged_heads.push_back(t_merged_heads);
+				attension_projected.push_back(t_attension_projected);
 
 				flag ? cout << "Final Layer normalizing....." : cout << "";
 	

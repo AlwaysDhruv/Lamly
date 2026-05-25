@@ -315,7 +315,7 @@ namespace Tensor
         }
     }
 
-        __global__ void layernorm_kernel(
+    __global__ void layernorm_kernel(
         float *value,
         float *gamma,
         float *beta,
@@ -378,6 +378,43 @@ namespace Tensor
             }
         }
     }
+
+    __global__ void causal_mask_kernel(
+        float *attention,
+        float *scaled,
+        float *masked,
+        int seq_len,
+        float scale)
+    {
+        int row =
+            blockIdx.y * blockDim.y + threadIdx.y;
+
+        int col =
+            blockIdx.x * blockDim.x + threadIdx.x;
+
+        if (row < seq_len && col < seq_len)
+        {
+            int idx =
+                row * seq_len + col;
+
+            if (col > row)
+            {
+                attention[idx] = -1e9f;
+                scaled[idx] = -1e9f;
+                masked[idx] = -1e9f;
+            }
+            else
+            {
+                float value =
+                    attention[idx] * scale;
+
+                attention[idx] = value;
+                scaled[idx] = value;
+                masked[idx] = value;
+            }
+        }
+    }
+
     inline void check_cuda(cudaError_t err)
     {
         if (err != cudaSuccess)
@@ -778,18 +815,6 @@ namespace Tensor
         }
         
         return trans;
-    }
-        
-    void casual_mask(vector<vector<float>>& attension_score, float scale)
-    {
-        for (size_t i = 0; i < attension_score.size(); ++i)
-        {
-            for (size_t k = 0; k < attension_score[0].size(); ++k)
-            {
-                if (k > i) attension_score[i][k] = -1e9f;
-                else attension_score[i][k] *= scale;
-            }
-        }
     }
 
     inline std::vector<std::vector<float>> dot_product(
@@ -1746,5 +1771,114 @@ namespace Tensor
             }
         }
     }
+
+    inline void causal_mask(
+        std::vector<std::vector<float>>& attention_score,
+        float scale,
+        std::vector<std::vector<float>>& scaled,
+        std::vector<std::vector<float>>& masked)
+    {
+        int seq_len =
+            attention_score.size();
+
+        int N =
+            seq_len * seq_len;
+
+        // flatten
+        std::vector<float> flat_attention(N);
+
+        for (int i = 0; i < seq_len; i++)
+            for (int j = 0; j < seq_len; j++)
+                flat_attention[i * seq_len + j] =
+                    attention_score[i][j];
+
+        // outputs
+        std::vector<float> flat_scaled(N);
+        std::vector<float> flat_masked(N);
+
+        // device memory
+        float *d_attention;
+        float *d_scaled;
+        float *d_masked;
+
+        cudaMalloc(&d_attention,
+                   N * sizeof(float));
+
+        cudaMalloc(&d_scaled,
+                   N * sizeof(float));
+
+        cudaMalloc(&d_masked,
+                   N * sizeof(float));
+
+        cudaMemcpy(d_attention,
+                   flat_attention.data(),
+                   N * sizeof(float),
+                   cudaMemcpyHostToDevice);
+
+        dim3 threads(16, 16);
+
+        dim3 blocks(
+            (seq_len + 15) / 16,
+            (seq_len + 15) / 16
+        );
+
+        causal_mask_kernel<<<blocks, threads>>>(
+            d_attention,
+            d_scaled,
+            d_masked,
+            seq_len,
+            scale
+        );
+
+        // copy back
+        cudaMemcpy(flat_attention.data(),
+                   d_attention,
+                   N * sizeof(float),
+                   cudaMemcpyDeviceToHost);
+
+        cudaMemcpy(flat_scaled.data(),
+                   d_scaled,
+                   N * sizeof(float),
+                   cudaMemcpyDeviceToHost);
+
+        cudaMemcpy(flat_masked.data(),
+                   d_masked,
+                   N * sizeof(float),
+                   cudaMemcpyDeviceToHost);
+
+        // free
+        cudaFree(d_attention);
+        cudaFree(d_scaled);
+        cudaFree(d_masked);
+
+        // reshape
+        scaled.assign(
+            seq_len,
+            std::vector<float>(seq_len)
+        );
+
+        masked.assign(
+            seq_len,
+            std::vector<float>(seq_len)
+        );
+
+        for (int i = 0; i < seq_len; i++)
+        {
+            for (int j = 0; j < seq_len; j++)
+            {
+                int idx =
+                    i * seq_len + j;
+
+                attention_score[i][j] =
+                    flat_attention[idx];
+
+                scaled[i][j] =
+                    flat_scaled[idx];
+
+                masked[i][j] =
+                    flat_masked[idx];
+            }
+        }
+    }    
 }
 #endif
