@@ -290,8 +290,6 @@ public:
 			
 			for (int seq = 0; seq < batch_size; ++seq)
 			{
-				vector<vector<vector<float>>> temp;
-				vector<vector<vector<float>>> temp1;
 
 				vector<vector<vector<float>>> t_l1_X;
 				vector<vector<vector<float>>> t_l1_X_STD;
@@ -323,6 +321,9 @@ public:
 				vector<vector<vector<float>>> t_attension_mask;
 				vector<vector<vector<float>>> t_attension_residual;
 
+				vector<vector<vector<float>>> t_gelu_output;
+				vector<vector<vector<float>>> t_mlp_mask;
+
 				t_l1_X.reserve(block_size);
 				t_l1_X_STD.reserve(block_size);
 				t_l1_mean.reserve(block_size);
@@ -352,6 +353,9 @@ public:
 				t_attension_projected.reserve(block_size);
 				t_attension_mask.reserve(block_size);
 				t_attension_residual.reserve(block_size);
+
+				t_gelu_output.reserve(block_size);
+				t_mlp_mask.reserve(block_size);
 
 				flag ? cout << "=======================================================" << endl : cout << "";
 				flag ? cout << "seq " << seq + 1 << " Started...." << endl : cout << "";
@@ -475,17 +479,17 @@ public:
 					
 					flag ? cout << "Gelu Calculating......" : cout << "";
 					Function::gelu(X_input2);
+					t_gelu_output.push_back(X_input2);
 					flag ? cout << "Done..." << endl : cout << "";
 
 					flag ? cout << "Linear2 Calulating......" : cout << "";
-					temp.push_back(X_input2);
 					X_input2 = Tensor::dot_product(X_input2, w2);
 					flag ? cout << "Done..." << endl : cout << "";
 					flag ? cout << "Linear Layer Calculated...." << endl << endl : cout << "";
 
 					flag ? cout << "Linear Output Dropouting......" : cout << "";
 					dropout_mask = Tensor::dropout_mask(seq_len, embed_size, dropout_rate);
-					temp1.push_back(dropout_mask);
+					t_mlp_mask.push_back(dropout_mask);
 					X_input2 = Tensor::dropout(attension, dropout_mask, dropout_prob);
 					flag ? cout << "Done..." << endl : cout << "";
 					
@@ -497,8 +501,8 @@ public:
 					flag ? cout << i + 1 << " ended...." << endl : cout << "";
 					flag ? cout << "=========================================" << endl << endl : cout << "";
 				}
-				dropout_mask_mlp.push_back(temp1);
-				gelu_output.push_back(temp);
+				dropout_mask_mlp.push_back(t_mlp_mask);
+				gelu_output.push_back(t_gelu_output);
 				
 				l1_X.push_back(t_l1_X);
 				l1_mean.push_back(t_l1_mean);
