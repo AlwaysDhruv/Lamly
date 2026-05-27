@@ -79,7 +79,7 @@ public:
 			context_len = token_ids.size();
 			xy_size = context_len - 1;
 			num_seq = xy_size - seq_len;
-			hidden_size = stoi(in["GPT"]["Hidden_size"]) * embed_size;
+			hidden_size = stoi(in["GPT"]["Hidden_size"]);
 			block_size = stoi(in["GPT"]["Block_size"]);
 			cout << "Done....." << endl;
 
@@ -197,8 +197,6 @@ public:
 			vector<vector<vector<float>>> hidden_states;
 			vector<vector<float>> dw_vocab(embed_size, vector<float>(vocab_size, 0.0f));
 			vector<vector<vector<float>>> dy;
-			vector<vector<vector<vector<float>>>> dropout_mask_mlp;
-			vector<vector<vector<vector<float>>>> gelu_output;
 
 			vector<vector<vector<vector<float>>>> l1_X;
 			vector<vector<vector<vector<float>>>> l1_X_STD;
@@ -235,7 +233,25 @@ public:
 			vector<vector<vector<vector<float>>>> attension_projected;
 			vector<vector<vector<vector<float>>>> attension_mask;
 			vector<vector<vector<vector<float>>>> attension_residual;
-			
+
+			vector<vector<vector<vector<float>>>> gelu_input;
+			vector<vector<vector<vector<float>>>> gelu_output;
+			vector<vector<vector<vector<float>>>> mlp_mask;
+
+			vector<vector<vector<vector<float>>>> linear1_input;
+			vector<vector<vector<vector<float>>>> linear1_output;
+
+			vector<vector<vector<vector<float>>>> linear2_input;
+			vector<vector<vector<vector<float>>>> linear2_output;
+
+			vector<vector<vector<vector<float>>>> mlp_residual;
+
+			vector<vector<vector<float>>> logits;
+
+			vector<vector<vector<float>>> softmax_probs;
+
+			vector<vector<long long>> target_ids;
+
 			vector<vector<float>> dw2(hidden_size, vector<float>(embed_size, 0.0f));
 
 			X_input.reserve(batch_size);
@@ -244,8 +260,6 @@ public:
 			hidden_states.reserve(batch_size);
 			
 			dy.reserve(batch_size);
-			dropout_mask_mlp.reserve(batch_size);
-			gelu_output.reserve(batch_size);
 
 			l1_X.reserve(batch_size);
 			l1_X_STD.reserve(batch_size);
@@ -283,11 +297,27 @@ public:
 			attension_mask.reserve(batch_size);
 			attension_residual.reserve(batch_size);
 
-			float loss = 0.0f;
+			gelu_input.reserve(batch_size);
+			gelu_output.reserve(batch_size);
+			mlp_mask.reserve(batch_size);
+
+			linear1_input.reserve(batch_size);
+			linear1_output.reserve(batch_size);
+
+			linear2_input.reserve(batch_size);
+			linear2_output.reserve(batch_size);
+
+			mlp_residual.reserve(batch_size);
 			
+			logits.reserve(batch_size);
+
+			softmax_probs.reserve(batch_size);
+
+			target_ids.reserve(batch_size);
+
+			float loss = 0.0f;
 			flag ? cout << "Batch " << ct << "Forward pass Started...." << endl : cout << "";
 			flag ? cout << "================================================================" << endl : cout << "";
-			
 			for (int seq = 0; seq < batch_size; ++seq)
 			{
 
@@ -321,8 +351,17 @@ public:
 				vector<vector<vector<float>>> t_attension_mask;
 				vector<vector<vector<float>>> t_attension_residual;
 
+				vector<vector<vector<float>>> t_gelu_input;
 				vector<vector<vector<float>>> t_gelu_output;
 				vector<vector<vector<float>>> t_mlp_mask;
+
+				vector<vector<vector<float>>> t_linear1_input;
+				vector<vector<vector<float>>> t_linear1_output;
+
+				vector<vector<vector<float>>> t_linear2_input;
+				vector<vector<vector<float>>> t_linear2_output;
+
+				vector<vector<vector<float>>> t_mlp_residual;
 
 				t_l1_X.reserve(block_size);
 				t_l1_X_STD.reserve(block_size);
@@ -354,8 +393,17 @@ public:
 				t_attension_mask.reserve(block_size);
 				t_attension_residual.reserve(block_size);
 
+				t_gelu_input.reserve(block_size);
 				t_gelu_output.reserve(block_size);
 				t_mlp_mask.reserve(block_size);
+
+				t_linear1_input.reserve(block_size);
+				t_linear1_output.reserve(block_size);
+
+				t_linear2_input.reserve(block_size);
+				t_linear2_output.reserve(block_size);
+
+				t_mlp_residual.reserve(block_size);
 
 				flag ? cout << "=======================================================" << endl : cout << "";
 				flag ? cout << "seq " << seq + 1 << " Started...." << endl : cout << "";
@@ -370,6 +418,7 @@ public:
 					flag ? cout << "=========================================" << endl : cout << "";
 					flag ? cout << i + 1 << " Block started...." << endl : cout << "";
 					flag ? cout << "=========================================" << endl : cout << "";
+
 					auto residual = X_input2;
 					
 					flag ? cout << "Block First Layer normalizing....." : cout << "";
@@ -426,7 +475,8 @@ public:
 					t2_attension_out.reserve(head_size);
 					t2_merged_heads.reserve(head_size);
 
-					auto attension = Attension::score(q_h, k_h, v_h, wo, t2_attension_score, t2_scaled_score, t2_masked_score, t2_attension_prob, t2_attension_out, t2_merged_heads);
+					auto attension = Attension::score(q_h, k_h, v_h, wo, t2_attension_score, t2_scaled_score, 
+														t2_masked_score, t2_attension_prob, t2_attension_out, t2_merged_heads);
 					t_attension_score.push_back(t2_attension_score);
 					t_scaled_score.push_back(t2_scaled_score);
 					t_masked_score.push_back(t2_masked_score);
@@ -438,7 +488,7 @@ public:
 					flag ? cout << "Done..." << endl : cout << "";
 
 					flag ? cout << "Attension Score Dropouting......" : cout << "";
-					dropout_mask = Random::dropout_mask(seq_len, embed_size, dropout_rate);
+					dropout_mask = Tensor::dropout_mask(seq_len, embed_size, dropout_rate);
 					t_attension_mask.push_back(dropout_mask);
 					X_input2 = Tensor::dropout(attension, dropout_mask, dropout_prob);
 					flag ? cout << "Done..." << endl : cout << "";
@@ -449,6 +499,7 @@ public:
 					flag ? cout << "Done..." << endl : cout << "";
 					
 					residual = X_input2;
+					t_mlp_residual.push_back(residual);
 
 					flag ? cout << "Block Second Layer normalizing....." : cout << "";
 					t_l2_X.push_back(X_input2);
@@ -474,17 +525,23 @@ public:
 					flag ? cout << "Linear Layer Started......" << endl : cout << "";
 					
 					flag ? cout << "Linear1 Calulating......" : cout << "";
+					t_linear1_input.push_back(X_input2);
 					X_input2 = Tensor::dot_product(X_input2, w1);
+					t_linear1_output.push_back(X_input2);
 					flag ? cout << "Done..." << endl : cout << "";
 					
 					flag ? cout << "Gelu Calculating......" : cout << "";
+					t_gelu_input.push_back(X_input2);
 					Function::gelu(X_input2);
 					t_gelu_output.push_back(X_input2);
 					flag ? cout << "Done..." << endl : cout << "";
 
 					flag ? cout << "Linear2 Calulating......" : cout << "";
+					t_linear2_input.push_back(X_input2);
 					X_input2 = Tensor::dot_product(X_input2, w2);
+					t_linear2_output.push_back(X_input2);
 					flag ? cout << "Done..." << endl : cout << "";
+					
 					flag ? cout << "Linear Layer Calculated...." << endl << endl : cout << "";
 
 					flag ? cout << "Linear Output Dropouting......" : cout << "";
@@ -501,8 +558,6 @@ public:
 					flag ? cout << i + 1 << " ended...." << endl : cout << "";
 					flag ? cout << "=========================================" << endl << endl : cout << "";
 				}
-				dropout_mask_mlp.push_back(t_mlp_mask);
-				gelu_output.push_back(t_gelu_output);
 				
 				l1_X.push_back(t_l1_X);
 				l1_mean.push_back(t_l1_mean);
@@ -533,7 +588,19 @@ public:
 				merged_heads.push_back(t_merged_heads);
 				attension_projected.push_back(t_attension_projected);
 				attension_mask.push_back(t_attension_mask);
-				attension_residual.push_back(t_attension_residual);				
+				attension_residual.push_back(t_attension_residual);
+
+				mlp_residual.push_back(t_mlp_residual);
+				
+				gelu_input.push_back(t_gelu_input);
+				gelu_output.push_back(t_gelu_output);
+				mlp_mask.push_back(t_mlp_mask);
+
+				linear1_input.push_back(t_linear1_input);
+				linear1_output.push_back(t_linear1_output);
+
+				linear2_input.push_back(t_linear2_input);
+				linear2_output.push_back(t_linear2_output);
 
 				flag ? cout << "Final Layer normalizing....." : cout << "";
 	
@@ -550,15 +617,17 @@ public:
 				final_std.push_back(t2_final_std);
 				final_X_STD.push_back(t2_final_X_STD);
 
-				hidden_states.push_back(X_input2);
 				flag ? cout << "Done..." << endl : cout << "";
 
 				flag ? cout << "LM Head Projecting....." : cout << "";
+				hidden_states.push_back(X_input2);
 				X_input2 = Tensor::dot_product(X_input2, embed_mat_t);
+				logits.push_back(X_input2);
 				flag ? cout << "Done..." << endl : cout << "";
 				
 				flag ? cout << "Softmax....." : cout << "";
 				Function::softmax(X_input2);
+				softmax_probs.push_back(X_input2);
 				flag ? cout << "Done..." << endl : cout << "";
 				
 				flag ? cout << "Calculating Loss....." : cout << "";
@@ -568,12 +637,17 @@ public:
 
 				flag ? cout << "Calculating Gradients....." : cout << "";
 				vector<vector<float>> gradient;
+				vector<long long> t_target_ids;
+				gradient.reserve(seq_len);
+				t_target_ids.reserve(seq_len);
 				for (int lss = 0; lss < seq_len; ++lss)
 				{
 					X_input2[lss][Y[batch][lss]] -= 1.0f;
+					t_target_ids.push_back(Y[batch][lss]);
 					gradient.push_back(X_input2[lss]);
 				}
 				loss_gradients.push_back(gradient);
+				target_ids.push_back(t_target_ids);
 				flag ? cout << "Done..." << endl : cout << "";
 
 				flag ? cout << "Done..." << endl << endl : cout << "";
@@ -611,7 +685,7 @@ public:
 			flag ? cout << "Done..." << endl: cout << "";
 
 			flag ? cout << "Transfomer Blocks Backwarding Started....." : cout << "";
-
+			
 			flag ? cout << "Done..." << endl: cout << "";
 
 			flag ? cout << "Batch " << ct << "Backward pass ended...." << endl : cout << "";
