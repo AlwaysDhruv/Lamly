@@ -185,18 +185,9 @@ public:
 			{
 				vector<vector<float>> temp;
 				temp.reserve(seq_len);
-				for (int i = 0; i < seq_len; ++i)
-				{
-					temp.push_back(Tensor::matadd(embed_mat[TX[seq][i]], pos_mat[i]));
-				}
+				for (int i = 0; i < seq_len; ++i) temp.push_back(Tensor::matadd(embed_mat[TX[seq][i]], pos_mat[i]));
 				X.push_back(temp);
 			}
-
-			vector<vector<vector<float>>> X_input;
-			vector<vector<vector<float>>> loss_gradients;
-			vector<vector<vector<float>>> hidden_states;
-			vector<vector<float>> dw_vocab(embed_size, vector<float>(vocab_size, 0.0f));
-			vector<vector<vector<float>>> dy;
 
 			vector<vector<vector<vector<float>>>> l1_X;
 			vector<vector<vector<vector<float>>>> l1_X_STD;
@@ -250,16 +241,13 @@ public:
 
 			vector<vector<vector<float>>> softmax_probs;
 
+			vector<vector<vector<float>>> X_input;
+			
+			vector<vector<vector<float>>> loss_gradients;
+			vector<vector<vector<float>>> hidden_states;
+
 			vector<vector<long long>> target_ids;
-
-			vector<vector<float>> dw2(hidden_size, vector<float>(embed_size, 0.0f));
-
-			X_input.reserve(batch_size);
 			
-			loss_gradients.reserve(batch_size);
-			hidden_states.reserve(batch_size);
-			
-			dy.reserve(batch_size);
 
 			l1_X.reserve(batch_size);
 			l1_X_STD.reserve(batch_size);
@@ -312,8 +300,12 @@ public:
 			logits.reserve(batch_size);
 
 			softmax_probs.reserve(batch_size);
-
+			
+			loss_gradients.reserve(batch_size);
 			target_ids.reserve(batch_size);
+			hidden_states.reserve(batch_size);
+			X_input.reserve(batch_size);
+
 
 			float loss = 0.0f;
 			flag ? cout << "Batch " << ct << "Forward pass Started...." << endl : cout << "";
@@ -661,32 +653,6 @@ public:
 
 			flag ? cout << "Batch " << ct << " Backward pass Started...." << endl : cout << "";
 			flag ? cout << "================================================================" << endl << endl : cout << "";
-
-			flag ? cout << "LM head Backward....." : cout << "";
-			for (int gra = 0; gra < batch_size; ++gra)
-			{
-				auto h_t = Tensor::transpose(hidden_states[gra]);
-				auto sum = Tensor::dot_product(h_t, loss_gradients[gra]);
-				dw_vocab = Tensor::matadd(dw_vocab, sum);
-	
-				auto embed_mat_t2 = Tensor::transpose(embed_mat_t);
-				dy.push_back(Tensor::dot_product(loss_gradients[gra], embed_mat_t2));
-			}
-			flag ? cout << "Done..." << endl: cout << "";
-
-			flag ? cout << "Final Layer Norm Backward....." : cout << "";
-			auto dbeta = Tensor::add(dy);
-			auto dgamma = Tensor::matmul_e(dy, final_X_STD);
-			auto dg = Tensor::add(dgamma);
-			auto dx_hat = Tensor::normalized_gradient(dy, gamma);
-			auto dvar = Tensor::variance_gradient(final_X, dx_hat, final_mean, final_var);
-			auto dmean = Tensor::mean_gradient(dx_hat, final_X_STD, dvar, final_std);
-			dy = Tensor::input_gradient(dx_hat, final_X_STD, dvar, dmean, final_std);
-			flag ? cout << "Done..." << endl: cout << "";
-
-			flag ? cout << "Transfomer Blocks Backwarding Started....." : cout << "";
-			
-			flag ? cout << "Done..." << endl: cout << "";
 
 			flag ? cout << "Batch " << ct << "Backward pass ended...." << endl : cout << "";
 			flag ? cout << "================================================================" << endl << endl : cout << "";
