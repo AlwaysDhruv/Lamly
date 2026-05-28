@@ -671,6 +671,16 @@ public:
 			}
 			flag ? cout << "Done..." << endl << endl : cout << "";
 
+			flag ? cout << "Final Layer Norm Backward....." : cout << "";
+			auto dg = Tensor::matmul_e(dh, final_X_STD);
+			auto dgamma = Tensor::add(dg);
+			auto dbeta = Tensor::add(dh);
+			auto dx_hat = Tensor::normalized_gradient(dh, gamma);
+			auto dvar = Tensor::variance_gradient(final_X, dx_hat, final_mean, final_var);
+			auto dmean = Tensor::mean_gradient(dx_hat, final_X_STD, dvar, final_std);
+			dh = Tensor::input_gradient(dx_hat, final_X_STD, dvar, dmean, final_std);
+			flag ? cout << "Done..." << endl: cout << "";
+
 			flag ? cout << "Batch " << ct << "Backward pass ended...." << endl : cout << "";
 			flag ? cout << "================================================================" << endl << endl : cout << "";
 
