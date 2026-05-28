@@ -654,6 +654,23 @@ public:
 			flag ? cout << "Batch " << ct << " Backward pass Started...." << endl : cout << "";
 			flag ? cout << "================================================================" << endl << endl : cout << "";
 
+			vector<vector<float>> dw_vocab(embed_size, vector<float>(vocab_size, 0.0f));
+			vector<vector<vector<float>>> dh;
+
+			auto embed_mat_t2 = Tensor::transpose(embed_mat_t);
+			dh.reserve(batch_size);
+						
+			flag ? cout << " LM Head Backwarding...." << endl : cout << "";
+			for (int gra = 0; gra < batch_size; ++gra)
+			{
+				auto h_t = Tensor::transpose(hidden_states[gra]);
+				auto sum = Tensor::dot_product(h_t, d_logits[gra]);
+				dw_vocab = Tensor::matadd(dw_vocab, sum);
+
+				dh.push_back(Tensor::dot_product(d_logits[gra], embed_mat_t2));
+			}
+			flag ? cout << "Done..." << endl << endl : cout << "";
+
 			flag ? cout << "Batch " << ct << "Backward pass ended...." << endl : cout << "";
 			flag ? cout << "================================================================" << endl << endl : cout << "";
 
