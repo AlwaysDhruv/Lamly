@@ -30,7 +30,6 @@ class Transformer
 	vector<long long> token_ids;
 
 	vector<vector<float>> embed_mat;
-	vector<vector<float>> embed_mat_t;
 	vector<vector<float>> pos_mat;
 	vector<vector<float>> embed_x;
 
@@ -43,6 +42,7 @@ class Transformer
 	vector<vector<float>> wo;
 	vector<vector<float>> w1;
 	vector<vector<float>> w2;	
+	vector<vector<float>> w_vocab;
 	
 	vector<vector<float>> q;
 	vector<vector<float>> k;
@@ -84,6 +84,8 @@ public:
 			cout << "Done....." << endl;
 
 			cout << "Weigths Initializing....";
+			embed_mat.reserve(vocab_size);
+			pos_mat.reserve(seq_len);
 			gamma.assign(embed_size, 1.0f);
 			beta.assign(embed_size, 0.0f);
 			wq.reserve(embed_size);
@@ -92,17 +94,16 @@ public:
 			wo.reserve(embed_size);
 			w1.reserve(embed_size);
 			w1.reserve(hidden_size);	
-			embed_mat.reserve(vocab_size);
-			pos_mat.reserve(seq_len);
 
+			embed_mat = Tensor::random(vocab_size, embed_size);
+			pos_mat = Tensor::random(seq_len, embed_size);
 			wq = Tensor::random(embed_size, embed_size);
 			wk = Tensor::random(embed_size, embed_size);
 			wv = Tensor::random(embed_size, embed_size);
 			wo = Tensor::random(embed_size, embed_size);
 			w1 = Tensor::random(embed_size, hidden_size);
 			w2 = Tensor::random(hidden_size, embed_size);
-			embed_mat = Tensor::random(vocab_size, embed_size);
-			pos_mat = Tensor::random(seq_len, embed_size);
+			w_vocab = Tensor::transpose(embed_mat);
 			cout << "Done....." << endl;
 		}
 		else cout << "config.ini Have Problem...." << endl;
@@ -172,8 +173,7 @@ public:
 	void Transformers()
 	{
 		int ct = 0;
-		embed_mat_t = Tensor::transpose(embed_mat);
-
+		
 		for (int batch = 0; batch < num_seq; batch+=batch_size)
 		{
 			flag ? cout << "======================================================================" << endl : cout << "";
@@ -248,7 +248,6 @@ public:
 
 			vector<vector<long long>> target_ids;
 			
-
 			l1_X.reserve(batch_size);
 			l1_X_STD.reserve(batch_size);
 			l1_mean.reserve(batch_size);
@@ -613,7 +612,7 @@ public:
 
 				flag ? cout << "LM Head Projecting....." : cout << "";
 				hidden_states.push_back(X_input2);
-				X_input2 = Tensor::dot_product(X_input2, embed_mat_t);
+				X_input2 = Tensor::dot_product(X_input2, w_vocab);
 				logits.push_back(X_input2);
 				flag ? cout << "Done..." << endl : cout << "";
 				
@@ -657,7 +656,10 @@ public:
 			vector<vector<float>> dw_vocab(embed_size, vector<float>(vocab_size, 0.0f));
 			vector<vector<vector<float>>> dh;
 
-			auto embed_mat_t2 = Tensor::transpose(embed_mat_t);
+			vector<vector<float>> dw2(hidden_size, vector<float>(embed_size, 0.0f));
+			vector<vector<float>> dw1(embed_size, vector<float>(hidden_size, 0.0f));
+
+			auto embed_mat_t2 = Tensor::transpose(w_vocab);
 			dh.reserve(batch_size);
 						
 			flag ? cout << " LM Head Backwarding...." << endl : cout << "";
@@ -679,6 +681,40 @@ public:
 			auto dvar = Tensor::variance_gradient(final_X, dx_hat, final_mean, final_var);
 			auto dmean = Tensor::mean_gradient(dx_hat, final_X_STD, dvar, final_std);
 			dh = Tensor::input_gradient(dx_hat, final_X_STD, dvar, dmean, final_std);
+			flag ? cout << "Done..." << endl: cout << "";
+
+			flag ? cout << "Transformer Backward....." : cout << "";
+			for (int back_batch = 0; back_batch < batch_size; ++back_batch)
+			{
+				auto d_mlp_residual = dx[back_batch];
+				auto dmlp = dx[back_batch];
+				for (int back_block = block_size - 1; back_block >= 0; back_block--)
+				{
+					dmlp = Tensor::matmul(dmlp, mlp_mask[back_batch][back_block]);
+					
+					auto gelu_output_t = Tensor::transpose(gelu_output[back_batch][back_block]);
+					auto sum = Tensor::dot_product(gelu_output_t, dmlp);
+					dw2 = Tensor::matadd(dw2, sum);
+
+					auto t_w2 = Tensor::transpose(w2);
+					auto dgelu = Tensor::dot_product(dmlp, t_w2);
+
+					auto gelu_d = gelu_input[back_batch][back_block];
+					Function::gelu_derivative(gelu_d);
+					auto dlinear1 = Tensor::matmul(dgelu, gelu_d);
+
+					auto l2_X_STD_t = Tensor::transpose(l2_X_STD[back_batch][back_block]);
+					sum = Tensor::dot_product(l2_X_STD_t, dlinear1);
+					dw1 = Tensor::matadd(dw1, sum);
+
+					auto t_w1 = Tensor::transpose(w1);
+					auto dln2 = Tensor::dot_product(dlinear1, t_w1);
+					Debug::display(dln2);
+					break;
+				}
+				break;
+			}
+			break;
 			flag ? cout << "Done..." << endl: cout << "";
 
 			flag ? cout << "Batch " << ct << "Backward pass ended...." << endl : cout << "";
