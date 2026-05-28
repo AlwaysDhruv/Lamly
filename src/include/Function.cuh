@@ -62,6 +62,50 @@ namespace Function
         }
     }
 
+    __global__ void gelu_derivative_kernel(
+        float *data,
+        int N)
+    {
+        int idx =
+            blockIdx.x * blockDim.x + threadIdx.x;
+
+        if (idx < N)
+        {
+            float x = data[idx];
+
+            const float sqrt_2_over_pi =
+                sqrtf(2.0f / M_PI);
+
+            const float coeff =
+                0.044715f;
+
+            float x2 =
+                x * x;
+
+            float x3 =
+                x2 * x;
+
+            float u =
+                sqrt_2_over_pi *
+                (x + coeff * x3);
+
+            float tanh_u =
+                tanhf(u);
+
+            float sech2 =
+                1.0f - (tanh_u * tanh_u);
+
+            float du_dx =
+                sqrt_2_over_pi *
+                (1.0f + 3.0f * coeff * x2);
+
+            data[idx] =
+                0.5f * (1.0f + tanh_u)
+                +
+                0.5f * x * sech2 * du_dx;
+        }
+    }
+
     inline void gelu(std::vector<std::vector<float>>& H)
     {
         int rows = H.size();
@@ -145,6 +189,61 @@ namespace Function
         for (int i = 0; i < rows; i++)
             for (int j = 0; j < cols; j++)
                 matrix[i][j] = flat[i * cols + j];
-    }    
+    }
+        
+    inline void gelu_derivative(
+        std::vector<std::vector<float>>& H)
+    {
+        int rows =
+            H.size();
+
+        int cols =
+            H[0].size();
+
+        int N =
+            rows * cols;
+
+        // flatten
+        std::vector<float> flat(N);
+
+        for (int i = 0; i < rows; i++)
+            for (int j = 0; j < cols; j++)
+                flat[i * cols + j] =
+                    H[i][j];
+
+        // device memory
+        float *d_data;
+
+        cudaMalloc(&d_data,
+                N * sizeof(float));
+
+        cudaMemcpy(d_data,
+                flat.data(),
+                N * sizeof(float),
+                cudaMemcpyHostToDevice);
+
+        int threads = 256;
+
+        int blocks =
+            (N + threads - 1) / threads;
+
+        gelu_derivative_kernel<<<blocks, threads>>>(
+            d_data,
+            N
+        );
+
+        cudaMemcpy(flat.data(),
+                d_data,
+                N * sizeof(float),
+                cudaMemcpyDeviceToHost);
+
+        cudaFree(d_data);
+
+        // reshape
+        for (int i = 0; i < rows; i++)
+            for (int j = 0; j < cols; j++)
+                H[i][j] =
+                    flat[i * cols + j];
+    }       
 }
 #endif

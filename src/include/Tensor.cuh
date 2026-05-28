@@ -40,6 +40,21 @@ namespace Tensor
             C[row * colsB + col] = sum;
         }
     }
+    __global__ void elementwise_mul_kernel(
+        float *A,
+        float *B,
+        float *C,
+        int N)
+    {
+        int idx =
+            blockIdx.x * blockDim.x + threadIdx.x;
+
+        if (idx < N)
+        {
+            C[idx] =
+                A[idx] * B[idx];
+        }
+    }
 
     __global__ void dropout_mask_kernel(
         float *mask,
@@ -1879,6 +1894,108 @@ namespace Tensor
                     flat_masked[idx];
             }
         }
-    }    
+    }
+
+    inline std::vector<std::vector<float>>
+    elementwise_mul(
+        std::vector<std::vector<float>>& v1,
+        std::vector<std::vector<float>>& v2)
+    {
+        int rows =
+            v1.size();
+
+        int cols =
+            v1[0].size();
+
+        int N =
+            rows * cols;
+
+        // flatten
+        std::vector<float> flatA(N);
+        std::vector<float> flatB(N);
+
+        for (int i = 0; i < rows; i++)
+        {
+            for (int j = 0; j < cols; j++)
+            {
+                int idx =
+                    i * cols + j;
+
+                flatA[idx] =
+                    v1[i][j];
+
+                flatB[idx] =
+                    v2[i][j];
+            }
+        }
+
+        // output
+        std::vector<float> flatC(N);
+
+        // device memory
+        float *d_A;
+        float *d_B;
+        float *d_C;
+
+        cudaMalloc(&d_A,
+                N * sizeof(float));
+
+        cudaMalloc(&d_B,
+                N * sizeof(float));
+
+        cudaMalloc(&d_C,
+                N * sizeof(float));
+
+        cudaMemcpy(d_A,
+                flatA.data(),
+                N * sizeof(float),
+                cudaMemcpyHostToDevice);
+
+        cudaMemcpy(d_B,
+                flatB.data(),
+                N * sizeof(float),
+                cudaMemcpyHostToDevice);
+
+        int threads = 256;
+
+        int blocks =
+            (N + threads - 1) / threads;
+
+        elementwise_mul_kernel<<<blocks, threads>>>(
+            d_A,
+            d_B,
+            d_C,
+            N
+        );
+
+        cudaMemcpy(flatC.data(),
+                d_C,
+                N * sizeof(float),
+                cudaMemcpyDeviceToHost);
+
+        cudaFree(d_A);
+        cudaFree(d_B);
+        cudaFree(d_C);
+
+        // reshape
+        std::vector<std::vector<float>> ans(
+            rows,
+            std::vector<float>(cols)
+        );
+
+        for (int i = 0; i < rows; i++)
+        {
+            for (int j = 0; j < cols; j++)
+            {
+                int idx =
+                    i * cols + j;
+
+                ans[i][j] =
+                    flatC[idx];
+            }
+        }
+
+        return ans;
+    }
 }
 #endif

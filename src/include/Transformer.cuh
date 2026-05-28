@@ -243,7 +243,7 @@ public:
 
 			vector<vector<vector<float>>> X_input;
 			
-			vector<vector<vector<float>>> loss_gradients;
+			vector<vector<vector<float>>> d_logits;
 			vector<vector<vector<float>>> hidden_states;
 
 			vector<vector<long long>> target_ids;
@@ -300,7 +300,7 @@ public:
 
 			softmax_probs.reserve(batch_size);
 			
-			loss_gradients.reserve(batch_size);
+			d_logits.reserve(batch_size);
 			target_ids.reserve(batch_size);
 			hidden_states.reserve(batch_size);
 			X_input.reserve(batch_size);
@@ -637,7 +637,7 @@ public:
 					t_target_ids.push_back(Y[batch][lss]);
 					gradient.push_back(X_input2[lss]);
 				}
-				loss_gradients.push_back(gradient);
+				d_logits.push_back(gradient);
 				target_ids.push_back(t_target_ids);
 				flag ? cout << "Done..." << endl : cout << "";
 
@@ -680,7 +680,7 @@ public:
 			auto dx_hat = Tensor::normalized_gradient(dh, gamma);
 			auto dvar = Tensor::variance_gradient(final_X, dx_hat, final_mean, final_var);
 			auto dmean = Tensor::mean_gradient(dx_hat, final_X_STD, dvar, final_std);
-			dh = Tensor::input_gradient(dx_hat, final_X_STD, dvar, dmean, final_std);
+			auto dx = Tensor::input_gradient(dx_hat, final_X_STD, dvar, dmean, final_std);
 			flag ? cout << "Done..." << endl: cout << "";
 
 			flag ? cout << "Transformer Backward....." : cout << "";
@@ -690,7 +690,7 @@ public:
 				auto dmlp = dx[back_batch];
 				for (int back_block = block_size - 1; back_block >= 0; back_block--)
 				{
-					dmlp = Tensor::matmul(dmlp, mlp_mask[back_batch][back_block]);
+					dmlp = Tensor::elementwise_mul(dmlp, mlp_mask[back_batch][back_block]);
 					
 					auto gelu_output_t = Tensor::transpose(gelu_output[back_batch][back_block]);
 					auto sum = Tensor::dot_product(gelu_output_t, dmlp);
@@ -701,7 +701,7 @@ public:
 
 					auto gelu_d = gelu_input[back_batch][back_block];
 					Function::gelu_derivative(gelu_d);
-					auto dlinear1 = Tensor::matmul(dgelu, gelu_d);
+					auto dlinear1 = Tensor::elementwise_mul(dgelu, gelu_d);
 
 					auto l2_X_STD_t = Tensor::transpose(l2_X_STD[back_batch][back_block]);
 					sum = Tensor::dot_product(l2_X_STD_t, dlinear1);
