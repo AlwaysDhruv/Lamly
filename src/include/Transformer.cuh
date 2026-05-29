@@ -36,14 +36,13 @@ class Transformer
 	vector<vector<long long>> Y;
 	vector<vector<long long>> TX;
 
-	vector<vector<float>> wq;
-	vector<vector<float>> wk;
-	vector<vector<float>> wv;
-	vector<vector<float>> wo;
-	vector<vector<float>> w1;
-	vector<vector<float>> w2;	
 	vector<vector<float>> w_vocab;
-	
+	vector<vector<vector<float>>> wq;
+	vector<vector<vector<float>>> wk;
+	vector<vector<vector<float>>> wv;
+	vector<vector<vector<float>>> wo;
+	vector<vector<vector<float>>> w1;
+	vector<vector<vector<float>>> w2;
 	vector<vector<float>> q;
 	vector<vector<float>> k;
 	vector<vector<float>> v;
@@ -52,9 +51,14 @@ class Transformer
 	vector<vector<vector<float>>> k_h;
 	vector<vector<vector<float>>> v_h;	
 
-	vector<float> gamma;
-	vector<float> beta;
+	vector<vector<float>> gamma1;
+	vector<vector<float>> beta1;
 
+	vector<vector<float>> gamma2;
+	vector<vector<float>> beta2;
+
+	vector<float> final_gamma;
+	vector<float> final_beta;
 public:
 	
 	Transformer(vector<long long>& ids)
@@ -86,23 +90,27 @@ public:
 			cout << "Weigths Initializing....";
 			embed_mat.reserve(vocab_size);
 			pos_mat.reserve(seq_len);
-			gamma.assign(embed_size, 1.0f);
-			beta.assign(embed_size, 0.0f);
-			wq.reserve(embed_size);
-			wk.reserve(embed_size);
-			wv.reserve(embed_size);
-			wo.reserve(embed_size);
-			w1.reserve(embed_size);
-			w1.reserve(hidden_size);	
-
+			wq.reserve(block_size);
+			wk.reserve(block_size);
+			wv.reserve(block_size);
+			wo.reserve(block_size);
+			w1.reserve(block_size);
+			w2.reserve(block_size);	
+			
 			embed_mat = Tensor::random(vocab_size, embed_size);
 			pos_mat = Tensor::random(seq_len, embed_size);
-			wq = Tensor::random(embed_size, embed_size);
-			wk = Tensor::random(embed_size, embed_size);
-			wv = Tensor::random(embed_size, embed_size);
-			wo = Tensor::random(embed_size, embed_size);
-			w1 = Tensor::random(embed_size, hidden_size);
-			w2 = Tensor::random(hidden_size, embed_size);
+			gamma1.assign(block_size, vector<float>(embed_size, 1.0f));
+			beta1.assign(block_size, vector<float>(embed_size, 0.0f));
+			gamma2.assign(block_size, vector<float>(embed_size, 1.0f));
+			beta2.assign(block_size, vector<float>(embed_size, 0.0f));			
+			final_gamma.assign(embed_size, 1.0f);
+			final_beta.assign(embed_size, 0.0f);
+			wq = Tensor::random(block_size, embed_size, embed_size);
+			wk = Tensor::random(block_size, embed_size, embed_size);
+			wv = Tensor::random(block_size, embed_size, embed_size);
+			wo = Tensor::random(block_size, embed_size, embed_size);
+			w1 = Tensor::random(block_size, embed_size, hidden_size);
+			w2 = Tensor::random(block_size, hidden_size, embed_size);
 			w_vocab = Tensor::transpose(embed_mat);
 			cout << "Done....." << endl;
 		}
@@ -144,7 +152,7 @@ public:
 		}
 	}
 
-	void linear_projection(vector<vector<float>>& X_in)
+	void linear_projection(vector<vector<float>>& X_in, int index)
 	{
 		q.clear();
 		k.clear();
@@ -153,9 +161,9 @@ public:
 		k_h.clear();
 		v_h.clear();
 
-		q = Tensor::dot_product(X_in, wq);
-		k = Tensor::dot_product(X_in, wk);
-		v = Tensor::dot_product(X_in, wv);
+		q = Tensor::dot_product(X_in, wq[index]);
+		k = Tensor::dot_product(X_in, wk[index]);
+		v = Tensor::dot_product(X_in, wv[index]);
 		
 		q_h.reserve(seq_len);
 		k_h.reserve(seq_len);
@@ -173,7 +181,7 @@ public:
 	void Transformers()
 	{
 		int ct = 0;
-		
+
 		for (int batch = 0; batch < num_seq; batch+=batch_size)
 		{
 			flag ? cout << "======================================================================" << endl : cout << "";
@@ -188,6 +196,8 @@ public:
 				for (int i = 0; i < seq_len; ++i) temp.push_back(Tensor::matadd(embed_mat[TX[seq][i]], pos_mat[i]));
 				X.push_back(temp);
 			}
+
+			vector<vector<vector<float>>> X_input;
 
 			vector<vector<vector<vector<float>>>> l1_X;
 			vector<vector<vector<vector<float>>>> l1_X_STD;
@@ -241,13 +251,13 @@ public:
 
 			vector<vector<vector<float>>> softmax_probs;
 
-			vector<vector<vector<float>>> X_input;
-			
 			vector<vector<vector<float>>> d_logits;
 			vector<vector<vector<float>>> hidden_states;
 
 			vector<vector<long long>> target_ids;
-			
+
+			X_input.reserve(batch_size);			
+
 			l1_X.reserve(batch_size);
 			l1_X_STD.reserve(batch_size);
 			l1_mean.reserve(batch_size);
@@ -299,16 +309,17 @@ public:
 			logits.reserve(batch_size);
 
 			softmax_probs.reserve(batch_size);
-			
-			d_logits.reserve(batch_size);
-			target_ids.reserve(batch_size);
-			hidden_states.reserve(batch_size);
-			X_input.reserve(batch_size);
 
+			d_logits.reserve(batch_size);
+			hidden_states.reserve(batch_size);
+
+			target_ids.reserve(batch_size);
 
 			float loss = 0.0f;
+			
 			flag ? cout << "Batch " << ct << "Forward pass Started...." << endl : cout << "";
 			flag ? cout << "================================================================" << endl : cout << "";
+			
 			for (int seq = 0; seq < batch_size; ++seq)
 			{
 
@@ -426,7 +437,7 @@ public:
 					t2_l1_var.reserve(seq_len);
 					t2_l1_std.reserve(seq_len);
 
-					Tensor::layer_norm(X_input2, gamma, beta, t2_l1_mean, t2_l1_var, t2_l1_std, t2_l1_X_STD);
+					Tensor::layer_norm(X_input2, gamma1[i], beta1[i], t2_l1_mean, t2_l1_var, t2_l1_std, t2_l1_X_STD);
 
 					t_l1_mean.push_back(t2_l1_mean);
 					t_l1_var.push_back(t2_l1_var);
@@ -447,7 +458,7 @@ public:
 					t_K_cache_H.push_back(k_h);
 					t_V_cache_H.push_back(v_h);
 					
-					linear_projection(X_input2);
+					linear_projection(X_input2, i);
 					
 					flag ? cout << "Done..." << endl : cout << "";
 
@@ -466,7 +477,7 @@ public:
 					t2_attension_out.reserve(head_size);
 					t2_merged_heads.reserve(head_size);
 
-					auto attension = Attension::score(q_h, k_h, v_h, wo, t2_attension_score, t2_scaled_score, 
+					auto attension = Attension::score(q_h, k_h, v_h, wo[i], t2_attension_score, t2_scaled_score, 
 														t2_masked_score, t2_attension_prob, t2_attension_out, t2_merged_heads);
 					t_attension_score.push_back(t2_attension_score);
 					t_scaled_score.push_back(t2_scaled_score);
@@ -505,7 +516,7 @@ public:
 					t2_l2_var.reserve(seq_len);
 					t2_l2_std.reserve(seq_len);
 
-					Tensor::layer_norm(X_input2, gamma, beta, t2_l2_mean, t2_l2_var, t2_l2_std, t2_l2_X_STD);
+					Tensor::layer_norm(X_input2, gamma2[i], beta2[i], t2_l2_mean, t2_l2_var, t2_l2_std, t2_l2_X_STD);
 					
 					t_l2_mean.push_back(t2_l2_mean);
 					t_l2_var.push_back(t2_l2_var);
@@ -517,7 +528,7 @@ public:
 					
 					flag ? cout << "Linear1 Calulating......" : cout << "";
 					t_linear1_input.push_back(X_input2);
-					X_input2 = Tensor::dot_product(X_input2, w1);
+					X_input2 = Tensor::dot_product(X_input2, w1[i]);
 					t_linear1_output.push_back(X_input2);
 					flag ? cout << "Done..." << endl : cout << "";
 					
@@ -529,7 +540,7 @@ public:
 
 					flag ? cout << "Linear2 Calulating......" : cout << "";
 					t_linear2_input.push_back(X_input2);
-					X_input2 = Tensor::dot_product(X_input2, w2);
+					X_input2 = Tensor::dot_product(X_input2, w2[i]);
 					t_linear2_output.push_back(X_input2);
 					flag ? cout << "Done..." << endl : cout << "";
 					
@@ -601,7 +612,7 @@ public:
 				vector<float> t2_final_std;
 
 				final_X.push_back(X_input2);
-				Tensor::layer_norm(X_input2, gamma, beta, t2_final_mean, t2_final_var, t2_final_std, t2_final_X_STD);
+				Tensor::layer_norm(X_input2, final_gamma, final_beta, t2_final_mean, t2_final_var, t2_final_std, t2_final_X_STD);
 				
 				final_mean.push_back(t2_final_mean);
 				final_var.push_back(t2_final_var);
@@ -652,16 +663,14 @@ public:
 
 			flag ? cout << "Batch " << ct << " Backward pass Started...." << endl : cout << "";
 			flag ? cout << "================================================================" << endl << endl : cout << "";
-
+			
 			vector<vector<float>> dw_vocab(embed_size, vector<float>(vocab_size, 0.0f));
 			vector<vector<vector<float>>> dh;
-
-			vector<vector<float>> dw2(hidden_size, vector<float>(embed_size, 0.0f));
-			vector<vector<float>> dw1(embed_size, vector<float>(hidden_size, 0.0f));
-
+			
 			auto embed_mat_t2 = Tensor::transpose(w_vocab);
+			
 			dh.reserve(batch_size);
-						
+			
 			flag ? cout << " LM Head Backwarding...." << endl : cout << "";
 			for (int gra = 0; gra < batch_size; ++gra)
 			{
@@ -675,13 +684,18 @@ public:
 
 			flag ? cout << "Final Layer Norm Backward....." : cout << "";
 			auto dg = Tensor::matmul_e(dh, final_X_STD);
-			auto dgamma = Tensor::add(dg);
-			auto dbeta = Tensor::add(dh);
-			auto dx_hat = Tensor::normalized_gradient(dh, gamma);
+			auto dfinal_gamma = Tensor::sum(dg);
+			auto dfinal_beta = Tensor::sum(dh);
+			auto dx_hat = Tensor::normalized_gradient(dh, final_gamma);
 			auto dvar = Tensor::variance_gradient(final_X, dx_hat, final_mean, final_var);
 			auto dmean = Tensor::mean_gradient(dx_hat, final_X_STD, dvar, final_std);
 			auto dx = Tensor::input_gradient(dx_hat, final_X_STD, dvar, dmean, final_std);
 			flag ? cout << "Done..." << endl: cout << "";
+			
+			vector<vector<vector<float>>> dw2(block_size, vector<vector<float>> (hidden_size, vector<float>(embed_size, 0.0f)));
+			vector<vector<vector<float>>> dw1(block_size, vector<vector<float>> (embed_size, vector<float>(hidden_size, 0.0f)));
+			vector<vector<float>> dgamma2(block_size, vector<float>(embed_size, 0.0f));
+			vector<vector<float>> dbeta2(block_size, vector<float>(embed_size, 0.0f));
 
 			flag ? cout << "Transformer Backward....." : cout << "";
 			for (int back_batch = 0; back_batch < batch_size; ++back_batch)
@@ -694,9 +708,9 @@ public:
 					
 					auto gelu_output_t = Tensor::transpose(gelu_output[back_batch][back_block]);
 					auto sum = Tensor::dot_product(gelu_output_t, dmlp);
-					dw2 = Tensor::matadd(dw2, sum);
+					dw2[back_block] = Tensor::matadd(dw2[back_block], sum);
 
-					auto t_w2 = Tensor::transpose(w2);
+					auto t_w2 = Tensor::transpose(w2[back_block]);
 					auto dgelu = Tensor::dot_product(dmlp, t_w2);
 
 					auto gelu_d = gelu_input[back_batch][back_block];
@@ -705,11 +719,19 @@ public:
 
 					auto l2_X_STD_t = Tensor::transpose(l2_X_STD[back_batch][back_block]);
 					sum = Tensor::dot_product(l2_X_STD_t, dlinear1);
-					dw1 = Tensor::matadd(dw1, sum);
+					dw1[back_block] = Tensor::matadd(dw1[back_block], sum);
 
-					auto t_w1 = Tensor::transpose(w1);
+					auto t_w1 = Tensor::transpose(w1[back_block]);
 					auto dln2 = Tensor::dot_product(dlinear1, t_w1);
-					Debug::display(dln2);
+					
+					sum = Tensor::elementwise_mul(dln2, l2_X_STD[back_batch][back_block]);
+					auto sum1 = Tensor::sum(sum);
+					dgamma2[back_block] = Tensor::matadd(dgamma2[back_block],sum1);
+					sum1 = Tensor::sum(dln2);
+					dbeta2[back_block] = Tensor::matadd(dbeta2[back_block], sum1);
+
+					auto dxhat = Tensor::elementwise_mul(dln2, gamma2[back_block]);
+					
 					break;
 				}
 				break;

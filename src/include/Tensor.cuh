@@ -14,14 +14,65 @@ namespace Tensor
             C[i] = A[i] + B[i];
     }
 
-    __global__ void random_kernel(float *data, curandState *states, int N)
+    __global__ void elementwise_mul_broadcast_kernel(
+        float *A,
+        float *B,
+        float *C,
+        int rows,
+        int cols)
     {
-        int i = blockIdx.x * blockDim.x + threadIdx.x;
+        int idx = blockIdx.x * blockDim.x + threadIdx.x;
 
-        if (i < N)
+        int N = rows * cols;
+
+        if (idx < N)
         {
-            curand_init(1234, i, 0, &states[i]);
-            data[i] = curand_uniform(&states[i]);
+            int col = idx % cols;
+
+            C[idx] = A[idx] * B[col];
+        }
+    }
+
+    __global__ void random_kernel(
+        float *data,
+        curandState *states,
+        int N)
+    {
+        int idx =
+            blockIdx.x * blockDim.x + threadIdx.x;
+
+        if (idx < N)
+        {
+            curand_init(
+                1234,
+                idx,
+                0,
+                &states[idx]);
+
+            data[idx] =
+                curand_uniform(&states[idx]);
+        }
+    }
+
+    __global__ void sum2d_kernel(
+        float *data,
+        float *out,
+        int rows,
+        int cols)
+    {
+        int col =
+            blockIdx.x * blockDim.x + threadIdx.x;
+
+        if (col < cols)
+        {
+            float sum = 0.0f;
+
+            for (int row = 0; row < rows; row++)
+            {
+                sum += data[row * cols + col];
+            }
+
+            out[col] = sum;
         }
     }
 
@@ -443,85 +494,120 @@ namespace Tensor
         }
     }
 
-    inline std::vector<std::vector<float>>
-    random(int N1, int N2)
+    inline std::vector<std::vector<std::vector<float>>>
+    random(int N1, int N2, int N3)
     {
-        std::vector<std::vector<float>> matrix(
-            N1,
-            std::vector<float>(N2));
-
-        // host memory
-        std::vector<float> h_data(N1 * N2);
-
-        // fill random values
-        for (int i = 0; i < N1 * N2; i++)
-        {
-            h_data[i] =
-                static_cast<float>(rand()) / RAND_MAX;
-        }
+        int N = N1 * N2 * N3;
 
         // device memory
-        float *d_data = nullptr;
+        float *d_data;
+        curandState *d_states;
 
-        cudaError_t err;
-
-        err = cudaMalloc(
+        cudaMalloc(
             &d_data,
-            N1 * N2 * sizeof(float));
+            N * sizeof(float));
 
-        if (err != cudaSuccess)
-        {
-            std::cout
-                << "cudaMalloc failed: "
-                << cudaGetErrorString(err)
-                << std::endl;
+        cudaMalloc(
+            &d_states,
+            N * sizeof(curandState));
 
-            exit(EXIT_FAILURE);
-        }
+        int threads = 256;
+        int blocks =
+            (N + threads - 1) / threads;
 
-        err = cudaMemcpy(
+        random_kernel<<<blocks, threads>>>(
             d_data,
-            h_data.data(),
-            N1 * N2 * sizeof(float),
-            cudaMemcpyHostToDevice);
+            d_states,
+            N);
 
-        if (err != cudaSuccess)
-        {
-            std::cout
-                << "cudaMemcpy H2D failed: "
-                << cudaGetErrorString(err)
-                << std::endl;
-
-            exit(EXIT_FAILURE);
-        }
+        cudaDeviceSynchronize();
 
         // copy back
-        err = cudaMemcpy(
+        std::vector<float> h_data(N);
+
+        cudaMemcpy(
             h_data.data(),
             d_data,
-            N1 * N2 * sizeof(float),
+            N * sizeof(float),
             cudaMemcpyDeviceToHost);
 
-        if (err != cudaSuccess)
-        {
-            std::cout
-                << "cudaMemcpy D2H failed: "
-                << cudaGetErrorString(err)
-                << std::endl;
-
-            exit(EXIT_FAILURE);
-        }
-
         cudaFree(d_data);
+        cudaFree(d_states);
 
-        // reshape correctly
+        // reshape
+        std::vector<std::vector<std::vector<float>>> tensor(
+            N1,
+            std::vector<std::vector<float>>(
+                N2,
+                std::vector<float>(N3)));
+
         for (int i = 0; i < N1; i++)
         {
             for (int j = 0; j < N2; j++)
             {
-                int index = i * N2 + j;
+                for (int k = 0; k < N3; k++)
+                {
+                    int idx =
+                        (i * N2 + j) * N3 + k;
 
-                matrix[i][j] = h_data[index];
+                    tensor[i][j][k] =
+                        h_data[idx];
+                }
+            }
+        }
+
+        return tensor;
+    }
+
+    inline std::vector<std::vector<float>>
+    random(int rows, int cols)
+    {
+        int N = rows * cols;
+
+        float *d_data;
+        curandState *d_states;
+
+        cudaMalloc(
+            &d_data,
+            N * sizeof(float));
+
+        cudaMalloc(
+            &d_states,
+            N * sizeof(curandState));
+
+        int threads = 256;
+        int blocks =
+            (N + threads - 1) / threads;
+
+        random_kernel<<<blocks, threads>>>(
+            d_data,
+            d_states,
+            N);
+
+        cudaDeviceSynchronize();
+
+        std::vector<float> h_data(N);
+
+        cudaMemcpy(
+            h_data.data(),
+            d_data,
+            N * sizeof(float),
+            cudaMemcpyDeviceToHost);
+
+        cudaFree(d_data);
+        cudaFree(d_states);
+
+        // reshape
+        std::vector<std::vector<float>> matrix(
+            rows,
+            std::vector<float>(cols));
+
+        for (int i = 0; i < rows; i++)
+        {
+            for (int j = 0; j < cols; j++)
+            {
+                matrix[i][j] =
+                    h_data[i * cols + j];
             }
         }
 
@@ -994,7 +1080,7 @@ namespace Tensor
         return ans;
     }
 
-    inline std::vector<float> add(
+    inline std::vector<float> sum(
         std::vector<std::vector<std::vector<float>>>& v)
     {
         int batch_size = v.size();
@@ -1997,5 +2083,134 @@ namespace Tensor
 
         return ans;
     }
+
+    inline std::vector<std::vector<float>>
+    elementwise_mul(
+        std::vector<std::vector<float>>& v1,
+        std::vector<float>& v2)
+    {
+        int rows = v1.size();
+        int cols = v1[0].size();
+
+        int N = rows * cols;
+
+        // flatten matrix
+        std::vector<float> flatA(N);
+
+        for (int i = 0; i < rows; i++)
+            for (int j = 0; j < cols; j++)
+                flatA[i * cols + j] = v1[i][j];
+
+        std::vector<float> flatC(N);
+
+        float *d_A;
+        float *d_B;
+        float *d_C;
+
+        cudaMalloc(&d_A, N * sizeof(float));
+        cudaMalloc(&d_B, cols * sizeof(float));
+        cudaMalloc(&d_C, N * sizeof(float));
+
+        cudaMemcpy(
+            d_A,
+            flatA.data(),
+            N * sizeof(float),
+            cudaMemcpyHostToDevice);
+
+        cudaMemcpy(
+            d_B,
+            v2.data(),
+            cols * sizeof(float),
+            cudaMemcpyHostToDevice);
+
+        int threads = 256;
+        int blocks = (N + threads - 1) / threads;
+
+        elementwise_mul_broadcast_kernel<<<blocks, threads>>>(
+            d_A,
+            d_B,
+            d_C,
+            rows,
+            cols);
+
+        cudaMemcpy(
+            flatC.data(),
+            d_C,
+            N * sizeof(float),
+            cudaMemcpyDeviceToHost);
+
+        cudaFree(d_A);
+        cudaFree(d_B);
+        cudaFree(d_C);
+
+        // reshape
+        std::vector<std::vector<float>> ans(
+            rows,
+            std::vector<float>(cols));
+
+        for (int i = 0; i < rows; i++)
+            for (int j = 0; j < cols; j++)
+                ans[i][j] = flatC[i * cols + j];
+
+        return ans;
+    }
+
+    inline std::vector<float> sum(
+        std::vector<std::vector<float>>& v)
+    {
+        int rows = v.size();
+        int cols = v[0].size();
+
+        int N = rows * cols;
+
+        // flatten
+        std::vector<float> flat(N);
+
+        for (int i = 0; i < rows; i++)
+        {
+            for (int j = 0; j < cols; j++)
+            {
+                flat[i * cols + j] =
+                    v[i][j];
+            }
+        }
+
+        std::vector<float> ans(cols);
+
+        float *d_data;
+        float *d_out;
+
+        cudaMalloc(&d_data,
+                   N * sizeof(float));
+
+        cudaMalloc(&d_out,
+                   cols * sizeof(float));
+
+        cudaMemcpy(d_data,
+                   flat.data(),
+                   N * sizeof(float),
+                   cudaMemcpyHostToDevice);
+
+        int threads = 256;
+        int blocks =
+            (cols + threads - 1) / threads;
+
+        sum2d_kernel<<<blocks, threads>>>(
+            d_data,
+            d_out,
+            rows,
+            cols);
+
+        cudaMemcpy(ans.data(),
+                   d_out,
+                   cols * sizeof(float),
+                   cudaMemcpyDeviceToHost);
+
+        cudaFree(d_data);
+        cudaFree(d_out);
+
+        return ans;
+    }
+    
 }
 #endif
