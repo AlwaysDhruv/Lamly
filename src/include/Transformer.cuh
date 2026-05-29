@@ -731,7 +731,24 @@ public:
 					dbeta2[back_block] = Tensor::matadd(dbeta2[back_block], sum1);
 
 					auto dxhat = Tensor::elementwise_mul(dln2, gamma2[back_block]);
+					vector<vector<float>> dattension_out(seq_len, vector<float>(embed_size, 0.0f));
 					
+					for (int tokens = 0; tokens < seq_len; ++tokens)
+					{
+						float sum_dxhat = 0.0f;
+						float sum_dxhat_xhat = 0.0f;
+						for (int e = 0; e < embed_size; ++e)
+						{
+							sum_dxhat += dxhat[tokens][e];
+							sum_dxhat_xhat += (dxhat[tokens][e] * l2_X_STD[back_batch][back_block][tokens][e]);
+						}
+						for (int e = 0; e < embed_size; ++e)
+						{
+							dattension_out[tokens][e] = (l2_std[back_batch][back_block][tokens] / (float)embed_size) * ((float)embed_size * dxhat[tokens][e] - sum_dxhat - l2_X_STD[back_batch][back_block][tokens][e] * sum_dxhat_xhat);
+						}
+					}
+					Debug::display(dattension_out);
+				
 					break;
 				}
 				break;
