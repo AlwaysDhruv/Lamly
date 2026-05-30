@@ -744,11 +744,15 @@ public:
 						}
 						for (int e = 0; e < embed_size; ++e)
 						{
-							dattension_out[tokens][e] = (l2_std[back_batch][back_block][tokens] / (float)embed_size) * ((float)embed_size * dxhat[tokens][e] - sum_dxhat - l2_X_STD[back_batch][back_block][tokens][e] * sum_dxhat_xhat);
+							dattension_out[tokens][e] = (l2_std[back_batch][back_block][tokens]
+							/ (float)embed_size) * ((float)embed_size * dxhat[tokens][e] - sum_dxhat - l2_X_STD[back_batch][back_block][tokens][e] * sum_dxhat_xhat);
 						}
 					}
-					Debug::display(dattension_out);
-				
+
+					dattension_out = Tensor::matadd(dattension_out, d_mlp_residual);
+					auto dResidual_Attn = dattension_out;
+					auto dattension = dattension_out;
+
 					break;
 				}
 				break;
