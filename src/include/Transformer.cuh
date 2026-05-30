@@ -753,6 +753,11 @@ public:
 					auto dResidual_Attn = dattension_out;
 					auto dattension = dattension_out;
 
+					dattension = Tensor::elementwise_mul(dattension, attension_mask[back_batch][back_block]);
+					auto merged_heads_t = merged_heads[back_batch][back_block];
+					sum = Tensor::dot_product(merged_heads_t, dattension);
+					dwo[back_block] = Tensor::matadd(dwo[back_block], sum);
+
 					break;
 				}
 				break;
