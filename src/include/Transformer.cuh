@@ -758,6 +758,11 @@ public:
 					sum = Tensor::dot_product(merged_heads_t, dattension);
 					dwo[back_block] = Tensor::matadd(dwo[back_block], sum);
 
+					auto wo_t = Tensor::transpose(wo[back_block]);
+					auto dmerge = Tensor::dot_product(dattension, wo_t);
+
+					auto dAttentionOutput = Tensor::head_spliting(dmerge, head_size);
+					Debug::display(dAttentionOutput);
 					break;
 				}
 				break;
