@@ -760,9 +760,17 @@ public:
 
 					auto wo_t = Tensor::transpose(wo[back_block]);
 					auto dmerge = Tensor::dot_product(dattension, wo_t);
+					auto dAttentionOutput = Tensor::split_heads(dmerge, head_size);
+					
+					vector<vector<vector<float>>> dAttention_probs(head_size, vector<vector<float>> (embed_size, vector<float>(embed_size, 0.0f)));
+					
+					for (int head = 0; head < head_size; ++head)
+					{
+						auto v_t = Tensor::transpose(V_cache_H[back_batch][back_block][head]);
+						dAttention_probs[head] = Tensor::dot_product(dAttentionOutput[head], v_t);
+					}
 
-					auto dAttentionOutput = Tensor::head_spliting(dmerge, head_size);
-					Debug::display(dAttentionOutput);
+					Debug::display(dAttention_probs);
 					break;
 				}
 				break;

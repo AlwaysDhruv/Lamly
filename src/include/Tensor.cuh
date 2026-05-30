@@ -2211,6 +2211,38 @@ namespace Tensor
 
         return ans;
     }
-    
+
+    vector<vector<vector<float>>> split_heads(
+        const vector<vector<float>>& x,
+        int num_heads
+    )
+    {
+        int seq_len = x.size();
+        int embed_size = x[0].size();
+
+        int head_dim = embed_size / num_heads;
+
+        vector<vector<vector<float>>> out(
+            num_heads,
+            vector<vector<float>>(
+                seq_len,
+                vector<float>(head_dim)
+            )
+        );
+
+        for (int t = 0; t < seq_len; t++)
+        {
+            for (int h = 0; h < num_heads; h++)
+            {
+                for (int d = 0; d < head_dim; d++)
+                {
+                    out[h][t][d] =
+                        x[t][h * head_dim + d];
+                }
+            }
+        }
+
+        return out;
+    }
 }
 #endif
