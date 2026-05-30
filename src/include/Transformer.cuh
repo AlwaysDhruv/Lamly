@@ -696,7 +696,8 @@ public:
 			vector<vector<vector<float>>> dw1(block_size, vector<vector<float>> (embed_size, vector<float>(hidden_size, 0.0f)));
 			vector<vector<float>> dgamma2(block_size, vector<float>(embed_size, 0.0f));
 			vector<vector<float>> dbeta2(block_size, vector<float>(embed_size, 0.0f));
-
+			vector<vector<vector<float>>> dwo(block_size, vector<vector<float>> (embed_size, vector<float>(embed_size, 0.0f)));
+			
 			flag ? cout << "Transformer Backward....." : cout << "";
 			for (int back_batch = 0; back_batch < batch_size; ++back_batch)
 			{
