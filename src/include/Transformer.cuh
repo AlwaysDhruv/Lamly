@@ -450,6 +450,8 @@ public:
 
 					t_QKV_input.push_back(X_input2);
 					
+					linear_projection(X_input2, i);
+					
 					t_Q_cache.push_back(q);
 					t_K_cache.push_back(k);
 					t_V_cache.push_back(v);
@@ -458,7 +460,6 @@ public:
 					t_K_cache_H.push_back(k_h);
 					t_V_cache_H.push_back(v_h);
 					
-					linear_projection(X_input2, i);
 					
 					flag ? cout << "Done..." << endl : cout << "";
 
@@ -770,13 +771,8 @@ public:
 						auto v_t = Tensor::transpose(V_cache_H[back_batch][back_block][head]);
 						dAttention_probs[head] = Tensor::dot_product(dAttentionOutput[head], v_t);
 					}
-
-					Debug::display(dAttention_probs);
-					break;
 				}
-				break;
 			}
-			break;
 			flag ? cout << "Done..." << endl: cout << "";
 
 			flag ? cout << "Batch " << ct << "Backward pass ended...." << endl : cout << "";
