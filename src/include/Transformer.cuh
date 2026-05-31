@@ -762,6 +762,10 @@ public:
 					auto wo_t = Tensor::transpose(wo[back_block]);
 					auto dmerge = Tensor::dot_product(dattension, wo_t);
 					auto dAttentionOutput = Tensor::split_heads(dmerge, head_size);
+
+					vector<vector<vector<float>>> dv;
+					dv.reserve(head_size);
+					for (int head = 0; head < head_size; ++head) dv.push_back(Tensor::dot_product(dAttentionOutput[head], attension_out[back_batch][back_block][head]));
 					
 					vector<vector<vector<float>>> dAttention_probs;
 					dAttention_probs.reserve(head_size);
