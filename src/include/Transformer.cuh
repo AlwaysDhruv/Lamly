@@ -818,9 +818,14 @@ public:
 						auto dqk_scores_t = Tensor::transpose(dqk_scores[head]);
 						dk.push_back(Tensor::dot_product(dqk_scores_t, Q_cache_H[back_batch][back_block][head]));
 					}
-					Debug::shape(dq);
-					Debug::shape(dk);
-					Debug::shape(dv);					
+
+					auto dq_merge = Tensor::merge_heads(dq);
+					auto dk_merge = Tensor::merge_heads(dk);
+					auto dv_merge = Tensor::merge_heads(dv);
+
+					Debug::shape(dq_merge);
+					Debug::shape(dk_merge);
+					Debug::shape(dv_merge);
 				}
 			}
 			flag ? cout << "Done..." << endl: cout << "";

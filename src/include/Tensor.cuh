@@ -2244,5 +2244,49 @@ namespace Tensor
 
         return out;
     }
+
+    vector<vector<float>> merge_heads(
+        const vector<vector<vector<float>>>& x
+    )
+    {
+        int heads = x.size();
+        int seq_len = x[0].size();
+        int head_dim = x[0][0].size();
+
+        int embed_size =
+            heads * head_dim;
+
+        vector<vector<float>> out(
+            seq_len,
+            vector<float>(
+                embed_size,
+                0.0f
+            )
+        );
+
+        for (int token = 0;
+             token < seq_len;
+             ++token)
+        {
+            for (int head = 0;
+                 head < heads;
+                 ++head)
+            {
+                for (int dim = 0;
+                     dim < head_dim;
+                     ++dim)
+                {
+                    out[token]
+                       [head * head_dim + dim]
+                    =
+                    x[head]
+                     [token]
+                     [dim];
+                }
+            }
+        }
+
+        return out;
+    }    
 }
 #endif
