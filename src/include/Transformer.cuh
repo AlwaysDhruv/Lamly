@@ -823,9 +823,15 @@ public:
 					auto dk_merge = Tensor::merge_heads(dk);
 					auto dv_merge = Tensor::merge_heads(dv);
 
-					Debug::shape(dq_merge);
-					Debug::shape(dk_merge);
-					Debug::shape(dv_merge);
+					auto l1_X_STD_t = Tensor::transpose(l1_X_STD[back_batch][back_block]);
+					sum = Tensor::dot_product(l1_X_STD_t, dq_merge);
+					dwq[back_block] = Tensor::matadd(dwq[back_block], sum);
+
+					sum = Tensor::dot_product(l1_X_STD_t, dk_merge);
+					dwk[back_block] = Tensor::matadd(dwk[back_block], sum);
+
+					sum = Tensor::dot_product(l1_X_STD_t, dv_merge);
+					dwv[back_block] = Tensor::matadd(dwv[back_block], sum);
 				}
 			}
 			flag ? cout << "Done..." << endl: cout << "";
