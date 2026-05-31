@@ -766,7 +766,7 @@ public:
 					vector<vector<vector<float>>> dv;
 					dv.reserve(head_size);
 					for (int head = 0; head < head_size; ++head) dv.push_back(Tensor::dot_product(dAttentionOutput[head], attension_out[back_batch][back_block][head]));
-					
+
 					vector<vector<vector<float>>> dAttention_probs;
 					dAttention_probs.reserve(head_size);
 
@@ -807,7 +807,20 @@ public:
 							}
 						}
 					}
-					Debug::display(dqk_scores);
+					
+					vector<vector<vector<float>>> dq;
+					vector<vector<vector<float>>> dk;
+					dq.reserve(head_size);
+					dk.reserve(head_size);
+					for (int head = 0; head < head_size; ++head)
+					{
+						dq.push_back(Tensor::dot_product(dqk_scores[head], K_cache_H[back_batch][back_block][head]));
+						auto dqk_scores_t = Tensor::transpose(dqk_scores[head]);
+						dk.push_back(Tensor::dot_product(dqk_scores_t, Q_cache_H[back_batch][back_block][head]));
+					}
+					Debug::shape(dq);
+					Debug::shape(dk);
+					Debug::shape(dv);					
 				}
 			}
 			flag ? cout << "Done..." << endl: cout << "";
