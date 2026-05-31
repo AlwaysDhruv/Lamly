@@ -771,6 +771,27 @@ public:
 						auto v_t = Tensor::transpose(V_cache_H[back_batch][back_block][head]);
 						dAttention_probs[head] = Tensor::dot_product(dAttentionOutput[head], v_t);
 					}
+					
+					vector<vector<vector<float>>> dscores;
+					dscores.reserve(head_size);
+
+					for (int head = 0; head < head_size; ++head)
+					{
+						vector<vector<float>> t_dscores;
+						t_dscores.reserve(seq_len);
+						for (int tokens = 0; tokens < seq_len; ++tokens)
+						{
+							float dot = 0.0f;
+							vector<float> t2_dscores;
+							t2_dscores.reserve(embed_size);
+							for (int embed = 0; embed < embed_size; ++embed) dot += attension_prob[back_batch][back_block][head][tokens][embed] * dAttention_probs[head][tokens][embed];
+
+							for (int embed = 0; embed < embed_size; ++embed) t2_dscores.push_back(attension_prob[back_batch][back_block][head][tokens][embed] * (dAttention_probs[head][tokens][embed] - dot));
+							t_dscores.push_back(t2_dscores);
+						}
+						dscores.push_back(t_dscores);
+					}
+					Debug::display(dscores);				
 				}
 			}
 			flag ? cout << "Done..." << endl: cout << "";
