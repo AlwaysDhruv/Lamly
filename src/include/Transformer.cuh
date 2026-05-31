@@ -734,7 +734,7 @@ public:
 
 					auto dxhat = Tensor::elementwise_mul(dln2, gamma2[back_block]);
 					vector<vector<float>> dattension_out(seq_len, vector<float>(embed_size, 0.0f));
-					
+
 					for (int tokens = 0; tokens < seq_len; ++tokens)
 					{
 						float sum_dxhat = 0.0f;
@@ -747,10 +747,9 @@ public:
 						for (int e = 0; e < embed_size; ++e)
 						{
 							dattension_out[tokens][e] = (l2_std[back_batch][back_block][tokens]
-							/ (float)embed_size) * ((float)embed_size * dxhat[tokens][e] - sum_dxhat - l2_X_STD[back_batch][back_block][tokens][e] * sum_dxhat_xhat);
+								/ (float)embed_size) * ((float)embed_size * dxhat[tokens][e] - sum_dxhat - l2_X_STD[back_batch][back_block][tokens][e] * sum_dxhat_xhat);
 						}
 					}
-
 					dattension_out = Tensor::matadd(dattension_out, d_mlp_residual);
 					auto dResidual_Attn = dattension_out;
 					auto dattension = dattension_out;
@@ -764,14 +763,15 @@ public:
 					auto dmerge = Tensor::dot_product(dattension, wo_t);
 					auto dAttentionOutput = Tensor::split_heads(dmerge, head_size);
 					
-					vector<vector<vector<float>>> dAttention_probs(head_size, vector<vector<float>> (embed_size, vector<float>(embed_size, 0.0f)));
-					
+					vector<vector<vector<float>>> dAttention_probs;
+					dAttention_probs.reserve(head_size);
+
 					for (int head = 0; head < head_size; ++head)
 					{
 						auto v_t = Tensor::transpose(V_cache_H[back_batch][back_block][head]);
-						dAttention_probs[head] = Tensor::dot_product(dAttentionOutput[head], v_t);
+						dAttention_probs.push_back(Tensor::dot_product(dAttentionOutput[head], v_t));
 					}
-					
+
 					vector<vector<vector<float>>> dscores;
 					dscores.reserve(head_size);
 
@@ -779,14 +779,14 @@ public:
 					{
 						vector<vector<float>> t_dscores;
 						t_dscores.reserve(seq_len);
-						for (int tokens = 0; tokens < seq_len; ++tokens)
+						for (int query_tokens = 0; query_tokens < dAttention_probs[0].size(); ++query_tokens)
 						{
 							float dot = 0.0f;
 							vector<float> t2_dscores;
 							t2_dscores.reserve(embed_size);
-							for (int embed = 0; embed < embed_size; ++embed) dot += attension_prob[back_batch][back_block][head][tokens][embed] * dAttention_probs[head][tokens][embed];
+							for (int key = 0; key < dAttention_probs[0][0].size(); ++key) dot += attension_prob[back_batch][back_block][head][query_tokens][key] * dAttention_probs[head][query_tokens][key];
 
-							for (int embed = 0; embed < embed_size; ++embed) t2_dscores.push_back(attension_prob[back_batch][back_block][head][tokens][embed] * (dAttention_probs[head][tokens][embed] - dot));
+							for (int key = 0; key < dAttention_probs[0][0].size(); ++key) t2_dscores.push_back(attension_prob[back_batch][back_block][head][query_tokens][key] * (dAttention_probs[head][query_tokens][key] - dot));
 							t_dscores.push_back(t2_dscores);
 						}
 						dscores.push_back(t_dscores);
