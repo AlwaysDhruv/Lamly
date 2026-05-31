@@ -832,6 +832,20 @@ public:
 
 					sum = Tensor::dot_product(l1_X_STD_t, dv_merge);
 					dwv[back_block] = Tensor::matadd(dwv[back_block], sum);
+
+					auto wq_t = Tensor::transpose(wq[back_block]);
+					auto dxq = Tensor::dot_product(dq_merge, wq_t);
+
+					auto wk_t = Tensor::transpose(wk[back_block]);
+					auto dxk = Tensor::dot_product(dq_merge, wk_t);
+
+					auto wv_t = Tensor::transpose(wv[back_block]);
+					auto dxv = Tensor::dot_product(dq_merge, wv_t);
+
+					sum = Tensor::matadd(dxq, dxk);
+					auto dln1 = Tensor::matadd(sum, dxv);
+
+					Debug::display(dln1);					
 				}
 			}
 			flag ? cout << "Done..." << endl: cout << "";
