@@ -791,7 +791,19 @@ public:
 						}
 						dscores.push_back(t_dscores);
 					}
-					Debug::display(dscores);				
+					
+					auto dqk_scores = dscores;
+					for (int head = 0; head < head_size; ++head)
+					{
+						for (int query_tokens = 0; query_tokens < querys; ++query_tokens)
+						{
+							for (int key = 0; key < keys; ++key)
+							{
+								dqk_scores[head][query_tokens][key] /= scale;
+							}
+						}
+					}
+					Debug::display(dqk_scores);
 				}
 			}
 			flag ? cout << "Done..." << endl: cout << "";
