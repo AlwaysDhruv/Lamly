@@ -845,7 +845,32 @@ public:
 					sum = Tensor::matadd(dxq, dxk);
 					auto dln1 = Tensor::matadd(sum, dxv);
 
-					Debug::display(dln1);					
+					sum = Tensor::elementwise_mul(dln1, l1_X_STD[back_batch][back_block]);
+					sum1 = Tensor::sum(sum);
+					dgamma1[back_block] = Tensor::matadd(dgamma1[back_block],sum1);
+					sum1 = Tensor::sum(dln1);
+					dbeta1[back_block] = Tensor::matadd(dbeta1[back_block], sum1);
+
+					dxhat = Tensor::elementwise_mul(dln1, gamma1[back_block]);
+					vector<vector<float>> dBlockInput(seq_len, vector<float>(embed_size, 0.0f));
+
+					for (int tokens = 0; tokens < seq_len; ++tokens)
+					{
+						float sum_dxhat = 0.0f;
+						float sum_dxhat_xhat = 0.0f;
+						for (int e = 0; e < embed_size; ++e)
+						{
+							sum_dxhat += dxhat[tokens][e];
+							sum_dxhat_xhat += (dxhat[tokens][e] * l1_X_STD[back_batch][back_block][tokens][e]);
+						}
+						for (int e = 0; e < embed_size; ++e)
+						{
+							dBlockInput[tokens][e] = (l1_std[back_batch][back_block][tokens]
+								/ (float)embed_size) * ((float)embed_size * dxhat[tokens][e] - sum_dxhat - l1_X_STD[back_batch][back_block][tokens][e] * sum_dxhat_xhat);
+						}
+					}
+					dBlockInput = Tensor::matadd(dBlockInput, dResidual_Attn);
+					dmlp = dBlockInput;					
 				}
 			}
 			flag ? cout << "Done..." << endl: cout << "";
