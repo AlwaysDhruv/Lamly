@@ -797,16 +797,7 @@ public:
 					}
 					
 					auto dqk_scores = dscores;
-					for (int head = 0; head < head_size; ++head)
-					{
-						for (int query_tokens = 0; query_tokens < querys; ++query_tokens)
-						{
-							for (int key = 0; key < keys; ++key)
-							{
-								dqk_scores[head][query_tokens][key] /= scale;
-							}
-						}
-					}
+					for (int head = 0; head < head_size; ++head) for (int query_tokens = 0; query_tokens < querys; ++query_tokens) for (int key = 0; key < keys; ++key) dqk_scores[head][query_tokens][key] /= scale;
 					
 					vector<vector<vector<float>>> dq;
 					vector<vector<vector<float>>> dk;
