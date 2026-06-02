@@ -22,6 +22,7 @@ class Transformer
 	int hidden_size;
 	int block_size;
 	float head_dim;
+	float scale;
 	float dropout_rate;
 	float dropout_prob;
 	int display;
@@ -79,6 +80,7 @@ public:
 			display = stoi(in["GPT"]["Display"]);
 			flag = display==1 ? true : false;
 			head_dim = embed_size / head_size;
+			scale = sqrt(head_dim);
 			token_ids = ids;
 			context_len = token_ids.size();
 			xy_size = context_len - 1;
@@ -111,8 +113,8 @@ public:
 			wo = Tensor::random(block_size, embed_size, embed_size);
 			w1 = Tensor::random(block_size, embed_size, hidden_size);
 			w2 = Tensor::random(block_size, hidden_size, embed_size);
-			w_vocab = Tensor::transpose(embed_mat);
 			cout << "Done....." << endl;
+			w_vocab = Tensor::transpose(embed_mat);
 		}
 		else cout << "config.ini Have Problem...." << endl;
 	}
@@ -181,7 +183,7 @@ public:
 	void Transformers()
 	{
 		int ct = 0;
-
+		Debug::shape(Y);
 		for (int batch = 0; batch < num_seq; batch+=batch_size)
 		{
 			flag ? cout << "======================================================================" << endl : cout << "";
@@ -256,6 +258,8 @@ public:
 
 			vector<vector<long long>> target_ids;
 
+			vector<vector<vector<float>>> input_dropout_mask;
+
 			X_input.reserve(batch_size);			
 
 			l1_X.reserve(batch_size);
@@ -314,6 +318,8 @@ public:
 			hidden_states.reserve(batch_size);
 
 			target_ids.reserve(batch_size);
+			
+			input_dropout_mask.reserve(batch_size);
 
 			float loss = 0.0f;
 			
@@ -412,6 +418,7 @@ public:
 				
 				flag ? cout << "Input Dropouting......" : cout << "";
 				auto dropout_mask = Tensor::dropout_mask(seq_len, embed_size, dropout_rate);
+				input_dropout_mask.push_back(dropout_mask);
 				auto X_input2 = Tensor::dropout(X[seq], dropout_mask, dropout_prob);	
 				flag ? cout << "Done......" << endl : cout << "";
 
@@ -451,7 +458,7 @@ public:
 					t_QKV_input.push_back(X_input2);
 					
 					linear_projection(X_input2, i);
-					
+
 					t_Q_cache.push_back(q);
 					t_K_cache.push_back(k);
 					t_V_cache.push_back(v);
@@ -480,6 +487,7 @@ public:
 
 					auto attension = Attension::score(q_h, k_h, v_h, wo[i], t2_attension_score, t2_scaled_score, 
 														t2_masked_score, t2_attension_prob, t2_attension_out, t2_merged_heads);
+
 					t_attension_score.push_back(t2_attension_score);
 					t_scaled_score.push_back(t2_scaled_score);
 					t_masked_score.push_back(t2_masked_score);
@@ -550,7 +558,7 @@ public:
 					flag ? cout << "Linear Output Dropouting......" : cout << "";
 					dropout_mask = Tensor::dropout_mask(seq_len, embed_size, dropout_rate);
 					t_mlp_mask.push_back(dropout_mask);
-					X_input2 = Tensor::dropout(attension, dropout_mask, dropout_prob);
+					X_input2 = Tensor::dropout(X_input2, dropout_mask, dropout_prob);
 					flag ? cout << "Done..." << endl : cout << "";
 					
 					flag ? cout << "Second Residual Adding......" : cout << "";
@@ -634,7 +642,7 @@ public:
 				flag ? cout << "Done..." << endl : cout << "";
 				
 				flag ? cout << "Calculating Loss....." : cout << "";
-				for (int lss = 0; lss < seq_len; ++lss) loss += -log(X_input2[lss][Y[batch][lss]]);
+				for (int lss = 0; lss < seq_len; ++lss) loss += -log(X_input2[lss][Y[batch + seq][lss]]);
 				X_input.push_back(X_input2);
 				flag ? cout << "Done..." << endl : cout << "";
 
@@ -643,10 +651,12 @@ public:
 				vector<long long> t_target_ids;
 				gradient.reserve(seq_len);
 				t_target_ids.reserve(seq_len);
+				float scale_grad = 1.0f / ((float)batch_size * seq_len);
 				for (int lss = 0; lss < seq_len; ++lss)
 				{
-					X_input2[lss][Y[batch][lss]] -= 1.0f;
-					t_target_ids.push_back(Y[batch][lss]);
+					X_input2[lss][Y[batch + seq][lss]] -= 1.0f;
+					for (int v = 0; v < vocab_size; ++v) X_input2[lss][v] *= scale_grad;
+					t_target_ids.push_back(Y[batch + seq][lss]);
 					gradient.push_back(X_input2[lss]);
 				}
 				d_logits.push_back(gradient);
@@ -697,16 +707,23 @@ public:
 			vector<vector<vector<float>>> dw1(block_size, vector<vector<float>> (embed_size, vector<float>(hidden_size, 0.0f)));
 			vector<vector<float>> dgamma2(block_size, vector<float>(embed_size, 0.0f));
 			vector<vector<float>> dbeta2(block_size, vector<float>(embed_size, 0.0f));
+			vector<vector<float>> dgamma1(block_size, vector<float>(embed_size, 0.0f));
+			vector<vector<float>> dbeta1(block_size, vector<float>(embed_size, 0.0f));
+
 			vector<vector<vector<float>>> dwo(block_size, vector<vector<float>> (embed_size, vector<float>(embed_size, 0.0f)));
-			
+			vector<vector<vector<float>>> dwq(block_size, vector<vector<float>> (embed_size, vector<float>(embed_size, 0.0f)));
+			vector<vector<vector<float>>> dwk(block_size, vector<vector<float>> (embed_size, vector<float>(embed_size, 0.0f)));
+			vector<vector<vector<float>>> dwv(block_size, vector<vector<float>> (embed_size, vector<float>(embed_size, 0.0f)));
+
 			flag ? cout << "Transformer Backward....." : cout << "";
 			for (int back_batch = 0; back_batch < batch_size; ++back_batch)
 			{
 				auto d_mlp_residual = dx[back_batch];
 				auto dmlp = dx[back_batch];
+
 				for (int back_block = block_size - 1; back_block >= 0; back_block--)
 				{
-					dmlp = Tensor::elementwise_mul(dmlp, mlp_mask[back_batch][back_block]);
+					dmlp = Tensor::dropout(dmlp, mlp_mask[back_batch][back_block], dropout_prob);
 					
 					auto gelu_output_t = Tensor::transpose(gelu_output[back_batch][back_block]);
 					auto sum = Tensor::dot_product(gelu_output_t, dmlp);
@@ -754,7 +771,7 @@ public:
 					auto dResidual_Attn = dattension_out;
 					auto dattension = dattension_out;
 
-					dattension = Tensor::elementwise_mul(dattension, attension_mask[back_batch][back_block]);
+					dattension = Tensor::dropout(dattension, attension_mask[back_batch][back_block], dropout_prob);
 					auto merged_heads_t = Tensor::transpose(merged_heads[back_batch][back_block]);
 					sum = Tensor::dot_product(merged_heads_t, dattension);
 					dwo[back_block] = Tensor::matadd(dwo[back_block], sum);
@@ -765,7 +782,11 @@ public:
 
 					vector<vector<vector<float>>> dv;
 					dv.reserve(head_size);
-					for (int head = 0; head < head_size; ++head) dv.push_back(Tensor::dot_product(dAttentionOutput[head], attension_out[back_batch][back_block][head]));
+					for (int head = 0; head < head_size; ++head)
+					{
+						auto attension_prob_t = Tensor::transpose(attension_prob[back_batch][back_block][head]);
+						dv.push_back(Tensor::dot_product(attension_prob_t, dAttentionOutput[head]));
+					}
 
 					vector<vector<vector<float>>> dAttention_probs;
 					dAttention_probs.reserve(head_size);
@@ -779,18 +800,20 @@ public:
 					vector<vector<vector<float>>> dscores;
 					dscores.reserve(head_size);
 
+					int querys = dAttention_probs[0].size();
+					int keys = dAttention_probs[0][0].size();
 					for (int head = 0; head < head_size; ++head)
 					{
 						vector<vector<float>> t_dscores;
 						t_dscores.reserve(seq_len);
-						for (int query_tokens = 0; query_tokens < dAttention_probs[0].size(); ++query_tokens)
+						for (int query_tokens = 0; query_tokens < querys; ++query_tokens)
 						{
 							float dot = 0.0f;
-							vector<float> t2_dscores;
-							t2_dscores.reserve(embed_size);
-							for (int key = 0; key < dAttention_probs[0][0].size(); ++key) dot += attension_prob[back_batch][back_block][head][query_tokens][key] * dAttention_probs[head][query_tokens][key];
+							for (int key = 0; key < keys; ++key) dot += attension_prob[back_batch][back_block][head][query_tokens][key] * dAttention_probs[head][query_tokens][key];
 
-							for (int key = 0; key < dAttention_probs[0][0].size(); ++key) t2_dscores.push_back(attension_prob[back_batch][back_block][head][query_tokens][key] * (dAttention_probs[head][query_tokens][key] - dot));
+							vector<float> t2_dscores;
+							t2_dscores.reserve(keys);
+							for (int key = 0; key < keys; ++key) t2_dscores.push_back(attension_prob[back_batch][back_block][head][query_tokens][key] * (dAttention_probs[head][query_tokens][key] - dot));
 							t_dscores.push_back(t2_dscores);
 						}
 						dscores.push_back(t_dscores);
@@ -798,7 +821,7 @@ public:
 					
 					auto dqk_scores = dscores;
 					for (int head = 0; head < head_size; ++head) for (int query_tokens = 0; query_tokens < querys; ++query_tokens) for (int key = 0; key < keys; ++key) dqk_scores[head][query_tokens][key] /= scale;
-					
+
 					vector<vector<vector<float>>> dq;
 					vector<vector<vector<float>>> dk;
 					dq.reserve(head_size);
@@ -828,10 +851,10 @@ public:
 					auto dxq = Tensor::dot_product(dq_merge, wq_t);
 
 					auto wk_t = Tensor::transpose(wk[back_block]);
-					auto dxk = Tensor::dot_product(dq_merge, wk_t);
+					auto dxk = Tensor::dot_product(dk_merge, wk_t);
 
 					auto wv_t = Tensor::transpose(wv[back_block]);
-					auto dxv = Tensor::dot_product(dq_merge, wv_t);
+					auto dxv = Tensor::dot_product(dv_merge, wv_t);
 
 					sum = Tensor::matadd(dxq, dxk);
 					auto dln1 = Tensor::matadd(sum, dxv);
@@ -861,7 +884,8 @@ public:
 						}
 					}
 					dBlockInput = Tensor::matadd(dBlockInput, dResidual_Attn);
-					dmlp = dBlockInput;					
+					d_mlp_residual = dBlockInput;
+					dmlp = dBlockInput;
 				}
 			}
 			flag ? cout << "Done..." << endl: cout << "";
