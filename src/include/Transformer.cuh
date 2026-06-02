@@ -183,7 +183,6 @@ public:
 	void Transformers()
 	{
 		int ct = 0;
-		Debug::shape(Y);
 		for (int batch = 0; batch < num_seq; batch+=batch_size)
 		{
 			flag ? cout << "======================================================================" << endl : cout << "";
