@@ -885,6 +885,8 @@ public:
 					dBlockInput = Tensor::matadd(dBlockInput, dResidual_Attn);
 					d_mlp_residual = dBlockInput;
 					dmlp = dBlockInput;
+
+					auto dinput = Tensor::dropout(dmlp, input_dropout_mask[back_batch][back_block], dropout_prob);
 				}
 			}
 			flag ? cout << "Done..." << endl: cout << "";
