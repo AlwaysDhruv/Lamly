@@ -887,6 +887,7 @@ public:
 					dmlp = dBlockInput;
 
 					auto dinput = Tensor::dropout(dmlp, input_dropout_mask[back_batch][back_block], dropout_prob);
+					Tensor::embed_pos_backward(dinput, dembed_mat, dpos_mat, TX[batch + back_batch]);
 				}
 			}
 			flag ? cout << "Done..." << endl: cout << "";

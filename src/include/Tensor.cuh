@@ -481,6 +481,43 @@ namespace Tensor
         }
     }
 
+    __global__ void embed_pos_backward_kernel(
+        float *dinput,
+        float *dembed,
+        float *dpos,
+        long long *TX,
+        int seq_len,
+        int embed_size)
+    {
+        int idx =
+            blockIdx.x * blockDim.x + threadIdx.x;
+
+        int N = seq_len * embed_size;
+
+        if (idx < N)
+        {
+            int token_pos =
+                idx / embed_size;
+
+            int em =
+                idx % embed_size;
+
+            int token_id =
+                TX[token_pos];
+
+            float grad =
+                dinput[idx];
+
+            atomicAdd(
+                &dembed[token_id * embed_size + em],
+                grad);
+
+            atomicAdd(
+                &dpos[token_pos * embed_size + em],
+                grad);
+        }
+    }
+
     inline void check_cuda(cudaError_t err)
     {
         if (err != cudaSuccess)
@@ -2287,6 +2324,129 @@ namespace Tensor
         }
 
         return out;
-    }    
+    }
+
+    inline void embed_pos_backward(
+        std::vector<std::vector<float>>& dinput,
+        std::vector<std::vector<float>>& dembed_mat,
+        std::vector<std::vector<float>>& dpos_mat,
+        std::vector<long long>& TX)
+    {
+        int seq_len = dinput.size();
+        int embed_size = dinput[0].size();
+
+        int vocab_size = dembed_mat.size();
+
+        int N = seq_len * embed_size;
+
+        // flatten
+        std::vector<float> flat_input(N);
+
+        for (int i = 0; i < seq_len; i++)
+            for (int j = 0; j < embed_size; j++)
+                flat_input[i * embed_size + j]
+                    = dinput[i][j];
+
+        std::vector<float> flat_embed(
+            vocab_size * embed_size);
+
+        std::vector<float> flat_pos(
+            seq_len * embed_size);
+
+        for (int i = 0; i < vocab_size; i++)
+            for (int j = 0; j < embed_size; j++)
+                flat_embed[i * embed_size + j]
+                    = dembed_mat[i][j];
+
+        for (int i = 0; i < seq_len; i++)
+            for (int j = 0; j < embed_size; j++)
+                flat_pos[i * embed_size + j]
+                    = dpos_mat[i][j];
+
+        float *d_input;
+        float *d_embed;
+        float *d_pos;
+        long long *d_TX;
+
+        cudaMalloc(&d_input,
+                   N * sizeof(float));
+
+        cudaMalloc(&d_embed,
+                   flat_embed.size() *
+                   sizeof(float));
+
+        cudaMalloc(&d_pos,
+                   flat_pos.size() *
+                   sizeof(float));
+
+        cudaMalloc(&d_TX,
+                   seq_len *
+                   sizeof(long long));
+
+        cudaMemcpy(
+            d_input,
+            flat_input.data(),
+            N * sizeof(float),
+            cudaMemcpyHostToDevice);
+
+        cudaMemcpy(
+            d_embed,
+            flat_embed.data(),
+            flat_embed.size() * sizeof(float),
+            cudaMemcpyHostToDevice);
+
+        cudaMemcpy(
+            d_pos,
+            flat_pos.data(),
+            flat_pos.size() * sizeof(float),
+            cudaMemcpyHostToDevice);
+
+        cudaMemcpy(
+            d_TX,
+            TX.data(),
+            seq_len * sizeof(long long),
+            cudaMemcpyHostToDevice);
+
+        int threads = 256;
+        int blocks =
+            (N + threads - 1) / threads;
+
+        embed_pos_backward_kernel<<<blocks, threads>>>(
+            d_input,
+            d_embed,
+            d_pos,
+            d_TX,
+            seq_len,
+            embed_size);
+
+        cudaMemcpy(
+            flat_embed.data(),
+            d_embed,
+            flat_embed.size() * sizeof(float),
+            cudaMemcpyDeviceToHost);
+
+        cudaMemcpy(
+            flat_pos.data(),
+            d_pos,
+            flat_pos.size() * sizeof(float),
+            cudaMemcpyDeviceToHost);
+
+        cudaFree(d_input);
+        cudaFree(d_embed);
+        cudaFree(d_pos);
+        cudaFree(d_TX);
+
+        // reshape back
+        for (int i = 0; i < vocab_size; i++)
+            for (int j = 0; j < embed_size; j++)
+                dembed_mat[i][j] =
+                    flat_embed[i * embed_size + j];
+
+        for (int i = 0; i < seq_len; i++)
+            for (int j = 0; j < embed_size; j++)
+                dpos_mat[i][j] =
+                    flat_pos[i * embed_size + j];
+    }
+
 }
 #endif
