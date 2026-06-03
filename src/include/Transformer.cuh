@@ -27,6 +27,7 @@ class Transformer
 	float dropout_prob;
 	int display;
 	bool flag;
+	float learning_rate;
 
 	vector<long long> token_ids;
 
@@ -889,7 +890,7 @@ public:
 					d_mlp_residual = dBlockInput;
 					dmlp = dBlockInput;
 
-					auto dinput = Tensor::dropout(dmlp, input_dropout_mask[back_batch][back_block], dropout_prob);
+					auto dinput = Tensor::dropout(dmlp, input_dropout_mask[back_batch], dropout_prob);
 					Tensor::embed_pos_backward(dinput, dembed_mat, dpos_mat, TX[batch + back_batch]);
 				}
 			}
