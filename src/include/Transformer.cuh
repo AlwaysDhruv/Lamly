@@ -87,6 +87,7 @@ public:
 			num_seq = xy_size - seq_len;
 			hidden_size = stoi(in["GPT"]["Hidden_size"]);
 			block_size = stoi(in["GPT"]["Block_size"]);
+			learning_rate = stof(in["GPT"]["Learning_rate"]);
 			cout << "Done....." << endl;
 
 			cout << "Weigths Initializing....";
@@ -713,6 +714,8 @@ public:
 			vector<vector<vector<float>>> dwq(block_size, vector<vector<float>> (embed_size, vector<float>(embed_size, 0.0f)));
 			vector<vector<vector<float>>> dwk(block_size, vector<vector<float>> (embed_size, vector<float>(embed_size, 0.0f)));
 			vector<vector<vector<float>>> dwv(block_size, vector<vector<float>> (embed_size, vector<float>(embed_size, 0.0f)));
+			vector<vector<float>> dembed_mat(vocab_size, vector<float>(embed_size, 0.0f));
+			vector<vector<float>> dpos_mat(seq_len, vector<float>(embed_size, 0.0f));
 
 			flag ? cout << "Transformer Backward....." : cout << "";
 			for (int back_batch = 0; back_batch < batch_size; ++back_batch)
