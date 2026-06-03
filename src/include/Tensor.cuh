@@ -33,27 +33,6 @@ namespace Tensor
         }
     }
 
-    __global__ void random_kernel(
-        float *data,
-        curandState *states,
-        int N)
-    {
-        int idx =
-            blockIdx.x * blockDim.x + threadIdx.x;
-
-        if (idx < N)
-        {
-            curand_init(
-                1234,
-                idx,
-                0,
-                &states[idx]);
-
-            data[idx] =
-                curand_uniform(&states[idx]);
-        }
-    }
-
     __global__ void sum2d_kernel(
         float *data,
         float *out,
@@ -546,124 +525,52 @@ namespace Tensor
         }
     }
 
-    inline std::vector<std::vector<std::vector<float>>>
-    random(int N1, int N2, int N3)
+    vector<vector<float>> random(int n1, int n2)
     {
-        int N = N1 * N2 * N3;
+        vector<vector<float>> weight;
+        weight.reserve(n1);
 
-        // device memory
-        float *d_data;
-        curandState *d_states;
+        random_device rd;
+        mt19937 gen(rd());
+        
+        float std = 0.02f;
+        normal_distribution<float> dist(0.0f, std);
 
-        cudaMalloc(
-            &d_data,
-            N * sizeof(float));
-
-        cudaMalloc(
-            &d_states,
-            N * sizeof(curandState));
-
-        int threads = 256;
-        int blocks =
-            (N + threads - 1) / threads;
-
-        random_kernel<<<blocks, threads>>>(
-            d_data,
-            d_states,
-            N);
-
-        cudaDeviceSynchronize();
-
-        // copy back
-        std::vector<float> h_data(N);
-
-        cudaMemcpy(
-            h_data.data(),
-            d_data,
-            N * sizeof(float),
-            cudaMemcpyDeviceToHost);
-
-        cudaFree(d_data);
-        cudaFree(d_states);
-
-        // reshape
-        std::vector<std::vector<std::vector<float>>> tensor(
-            N1,
-            std::vector<std::vector<float>>(
-                N2,
-                std::vector<float>(N3)));
-
-        for (int i = 0; i < N1; i++)
+        for (int i = 0; i < n1; ++i)
         {
-            for (int j = 0; j < N2; j++)
-            {
-                for (int k = 0; k < N3; k++)
-                {
-                    int idx =
-                        (i * N2 + j) * N3 + k;
-
-                    tensor[i][j][k] =
-                        h_data[idx];
-                }
-            }
+            vector<float> temp;
+            temp.reserve(n2);
+            for (int j = 0; j < n2; ++j) temp.push_back(dist(gen));
+            weight.push_back(temp);
         }
-
-        return tensor;
+        return weight;
     }
 
-    inline std::vector<std::vector<float>>
-    random(int rows, int cols)
+    vector<vector<vector<float>>> random(int n1, int n2, int n3)
     {
-        int N = rows * cols;
+        vector<vector<vector<float>>> weight;
+        weight.reserve(n1);
 
-        float *d_data;
-        curandState *d_states;
+        random_device rd;
+        mt19937 gen(rd());
+        
+        float std = 0.02f;
+        normal_distribution<float> dist(0.0f, std);
 
-        cudaMalloc(
-            &d_data,
-            N * sizeof(float));
-
-        cudaMalloc(
-            &d_states,
-            N * sizeof(curandState));
-
-        int threads = 256;
-        int blocks =
-            (N + threads - 1) / threads;
-
-        random_kernel<<<blocks, threads>>>(
-            d_data,
-            d_states,
-            N);
-
-        cudaDeviceSynchronize();
-
-        std::vector<float> h_data(N);
-
-        cudaMemcpy(
-            h_data.data(),
-            d_data,
-            N * sizeof(float),
-            cudaMemcpyDeviceToHost);
-
-        cudaFree(d_data);
-        cudaFree(d_states);
-
-        // reshape
-        std::vector<std::vector<float>> matrix(
-            rows,
-            std::vector<float>(cols));
-
-        for (int i = 0; i < rows; i++)
+        for (int i = 0; i < n1; ++i)
         {
-            for (int j = 0; j < cols; j++)
+            vector<vector<float>> temp;
+            temp.reserve(n2);
+            for (int j = 0; j < n2; ++j)
             {
-                matrix[i][j] =
-                    h_data[i * cols + j];
+                vector<float> temp1;
+                temp1.reserve(n3);
+                for (int k = 0; k < n3; ++k) temp1.push_back(dist(gen));
+                temp.push_back(temp1);
             }
+            weight.push_back(temp);
         }
-
-        return matrix;
+        return weight;
     }
 
     inline std::vector<float> matadd(const std::vector<float>& A,
