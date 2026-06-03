@@ -518,6 +518,21 @@ namespace Tensor
         }
     }
 
+    __global__ void sgd_kernel(
+        float *weight,
+        float *gradient,
+        float lr,
+        int N)
+    {
+        int idx =
+            blockIdx.x * blockDim.x + threadIdx.x;
+
+        if (idx < N)
+        {
+            weight[idx] -= lr * gradient[idx];
+        }
+    }
+
     inline void check_cuda(cudaError_t err)
     {
         if (err != cudaSuccess)
@@ -2448,5 +2463,198 @@ namespace Tensor
                     flat_pos[i * embed_size + j];
     }
 
+    inline void SGD(
+        std::vector<float>& weight,
+        std::vector<float>& gradient,
+        float lr)
+    {
+        int N = weight.size();
+
+        float *d_weight;
+        float *d_gradient;
+
+        cudaMalloc(&d_weight, N * sizeof(float));
+        cudaMalloc(&d_gradient, N * sizeof(float));
+
+        cudaMemcpy(
+            d_weight,
+            weight.data(),
+            N * sizeof(float),
+            cudaMemcpyHostToDevice);
+
+        cudaMemcpy(
+            d_gradient,
+            gradient.data(),
+            N * sizeof(float),
+            cudaMemcpyHostToDevice);
+
+        int threads = 256;
+        int blocks = (N + threads - 1) / threads;
+
+        sgd_kernel<<<blocks, threads>>>(
+            d_weight,
+            d_gradient,
+            lr,
+            N);
+
+        cudaMemcpy(
+            weight.data(),
+            d_weight,
+            N * sizeof(float),
+            cudaMemcpyDeviceToHost);
+
+        cudaFree(d_weight);
+        cudaFree(d_gradient);
+    }
+
+    inline void SGD(
+        std::vector<std::vector<float>>& weight,
+        std::vector<std::vector<float>>& gradient,
+        float lr)
+    {
+        int rows = weight.size();
+        int cols = weight[0].size();
+
+        int N = rows * cols;
+
+        std::vector<float> flat_w(N);
+        std::vector<float> flat_g(N);
+
+        for(int i=0;i<rows;i++)
+        {
+            for(int j=0;j<cols;j++)
+            {
+                int idx = i * cols + j;
+
+                flat_w[idx] = weight[i][j];
+                flat_g[idx] = gradient[i][j];
+            }
+        }
+
+        float *d_w;
+        float *d_g;
+
+        cudaMalloc(&d_w, N*sizeof(float));
+        cudaMalloc(&d_g, N*sizeof(float));
+
+        cudaMemcpy(
+            d_w,
+            flat_w.data(),
+            N*sizeof(float),
+            cudaMemcpyHostToDevice);
+
+        cudaMemcpy(
+            d_g,
+            flat_g.data(),
+            N*sizeof(float),
+            cudaMemcpyHostToDevice);
+
+        int threads = 256;
+        int blocks = (N + threads - 1) / threads;
+
+        sgd_kernel<<<blocks, threads>>>(
+            d_w,
+            d_g,
+            lr,
+            N);
+
+        cudaMemcpy(
+            flat_w.data(),
+            d_w,
+            N*sizeof(float),
+            cudaMemcpyDeviceToHost);
+
+        cudaFree(d_w);
+        cudaFree(d_g);
+
+        for(int i=0;i<rows;i++)
+            for(int j=0;j<cols;j++)
+                weight[i][j] =
+                    flat_w[i * cols + j];
+    }
+
+    inline void SGD(
+        std::vector<std::vector<std::vector<float>>>& weight,
+        std::vector<std::vector<std::vector<float>>>& gradient,
+        float lr)
+    {
+        int d1 = weight.size();
+        int d2 = weight[0].size();
+        int d3 = weight[0][0].size();
+
+        int N = d1 * d2 * d3;
+
+        std::vector<float> flat_w(N);
+        std::vector<float> flat_g(N);
+
+        for(int i=0;i<d1;i++)
+        {
+            for(int j=0;j<d2;j++)
+            {
+                for(int k=0;k<d3;k++)
+                {
+                    int idx =
+                        (i * d2 + j) * d3 + k;
+
+                    flat_w[idx] =
+                        weight[i][j][k];
+
+                    flat_g[idx] =
+                        gradient[i][j][k];
+                }
+            }
+        }
+
+        float *d_w;
+        float *d_g;
+
+        cudaMalloc(&d_w, N*sizeof(float));
+        cudaMalloc(&d_g, N*sizeof(float));
+
+        cudaMemcpy(
+            d_w,
+            flat_w.data(),
+            N*sizeof(float),
+            cudaMemcpyHostToDevice);
+
+        cudaMemcpy(
+            d_g,
+            flat_g.data(),
+            N*sizeof(float),
+            cudaMemcpyHostToDevice);
+
+        int threads = 256;
+        int blocks = (N + threads - 1) / threads;
+
+        sgd_kernel<<<blocks, threads>>>(
+            d_w,
+            d_g,
+            lr,
+            N);
+
+        cudaMemcpy(
+            flat_w.data(),
+            d_w,
+            N*sizeof(float),
+            cudaMemcpyDeviceToHost);
+
+        cudaFree(d_w);
+        cudaFree(d_g);
+
+        for(int i=0;i<d1;i++)
+        {
+            for(int j=0;j<d2;j++)
+            {
+                for(int k=0;k<d3;k++)
+                {
+                    int idx =
+                        (i * d2 + j) * d3 + k;
+
+                    weight[i][j][k] =
+                        flat_w[idx];
+                }
+            }
+        }
+    }
 }
 #endif

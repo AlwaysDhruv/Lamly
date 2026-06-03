@@ -890,6 +890,20 @@ public:
 					Tensor::embed_pos_backward(dinput, dembed_mat, dpos_mat, TX[batch + back_batch]);
 				}
 			}
+			Tensor::SGD(embed_mat, dembed_mat, learning_rate);
+			Tensor::SGD(pos_mat, dpos_mat, learning_rate);
+			Tensor::SGD(wq, dwq, learning_rate);
+			Tensor::SGD(wk, dwk, learning_rate);
+			Tensor::SGD(wv, dwv, learning_rate);
+			Tensor::SGD(wo, dwo, learning_rate);
+			Tensor::SGD(w1, dw1, learning_rate);
+			Tensor::SGD(w2, dw2, learning_rate);
+			Tensor::SGD(gamma1, dgamma1, learning_rate);
+			Tensor::SGD(beta1, dbeta1, learning_rate);
+			Tensor::SGD(gamma2, dgamma2, learning_rate);
+			Tensor::SGD(beta2, dbeta2, learning_rate);
+			Tensor::SGD(final_gamma, dfinal_gamma, learning_rate);
+			Tensor::SGD(final_beta, dfinal_beta, learning_rate);			
 			flag ? cout << "Done..." << endl: cout << "";
 
 			flag ? cout << "Batch " << ct << "Backward pass ended...." << endl : cout << "";
