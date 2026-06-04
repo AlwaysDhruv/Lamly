@@ -2,6 +2,7 @@
 #define ADD_CUH
 
 #include <vector>
+#include <random>
 #include <cuda_runtime.h>
 #include <curand_kernel.h>
 
