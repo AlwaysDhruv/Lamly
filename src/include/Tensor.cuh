@@ -451,7 +451,7 @@ namespace Tensor
             else
             {
                 float value =
-                    attention[idx] * scale;
+                    attention[idx] / scale;
 
                 attention[idx] = value;
                 scaled[idx] = value;

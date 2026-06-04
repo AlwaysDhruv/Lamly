@@ -4,10 +4,11 @@
 #include <iostream>
 #include <fstream>
 #include <cmath>
-#include "Tensor.cuh"
+#include "Tensor.hpp"
 #include "Display.hpp"
-#include "Attension.cuh"
+#include "Attension.hpp"
 #include "../utils/ini.h"
+#include "Random.hpp"
 
 class Transformer
 {
@@ -15,7 +16,7 @@ class Transformer
 	int vocab_size;
 	int seq_len;
 	int batch_size;
-	int context_len;
+	int tokens_size;
 	int num_seq;
 	int xy_size;
 	int head_size;
@@ -28,6 +29,7 @@ class Transformer
 	int display;
 	bool flag;
 	float learning_rate;
+	int train;
 
 	vector<long long> token_ids;
 
@@ -83,12 +85,13 @@ public:
 			head_dim = embed_size / head_size;
 			scale = sqrt(head_dim);
 			token_ids = ids;
-			context_len = token_ids.size();
-			xy_size = context_len - 1;
-			num_seq = xy_size - seq_len;
+			tokens_size = token_ids.size();
+			xy_size = tokens_size - 1;
+			num_seq = xy_size - seq_len + 1;
 			hidden_size = stoi(in["GPT"]["Hidden_size"]);
 			block_size = stoi(in["GPT"]["Block_size"]);
 			learning_rate = stof(in["GPT"]["Learning_rate"]);
+			train = stoi(in["GPT"]["Train"]);
 			cout << "Done....." << endl;
 
 			cout << "Weigths Initializing....";
@@ -101,22 +104,23 @@ public:
 			w1.reserve(block_size);
 			w2.reserve(block_size);	
 			
-			embed_mat = Tensor::random(vocab_size, embed_size);
-			pos_mat = Tensor::random(seq_len, embed_size);
+			embed_mat = Random::random(vocab_size, embed_size);
+			pos_mat = Random::random(seq_len, embed_size);
 			gamma1.assign(block_size, vector<float>(embed_size, 1.0f));
 			beta1.assign(block_size, vector<float>(embed_size, 0.0f));
 			gamma2.assign(block_size, vector<float>(embed_size, 1.0f));
 			beta2.assign(block_size, vector<float>(embed_size, 0.0f));			
 			final_gamma.assign(embed_size, 1.0f);
 			final_beta.assign(embed_size, 0.0f);
-			wq = Tensor::random(block_size, embed_size, embed_size);
-			wk = Tensor::random(block_size, embed_size, embed_size);
-			wv = Tensor::random(block_size, embed_size, embed_size);
-			wo = Tensor::random(block_size, embed_size, embed_size);
-			w1 = Tensor::random(block_size, embed_size, hidden_size);
-			w2 = Tensor::random(block_size, hidden_size, embed_size);
+			wq = Random::random(block_size, embed_size, embed_size);
+			wk = Random::random(block_size, embed_size, embed_size);
+			wv = Random::random(block_size, embed_size, embed_size);
+			wo = Random::random(block_size, embed_size, embed_size);
+			w1 = Random::random(block_size, embed_size, hidden_size);
+			w2 = Random::random(block_size, hidden_size, embed_size);
+			w_vocab = Random::random(embed_size, vocab_size);
+
 			cout << "Done....." << endl;
-			w_vocab = Tensor::transpose(embed_mat);
 		}
 		else cout << "config.ini Have Problem...." << endl;
 	}
@@ -126,32 +130,30 @@ public:
 		vector<long long> token_x;
 		vector<long long> token_y;
 
-		token_x.reserve(xy_size);
-		token_y.reserve(xy_size);
+		token_x.reserve(tokens_size - 1);
+		token_y.reserve(tokens_size);
 
-		for (int i = 0, j = 1; i < xy_size, j < context_len; ++i, ++j)
+		for (int i = 0, j = 1; i < tokens_size - 1, j < tokens_size; ++i, ++j)
 		{
 			token_x.push_back(token_ids[i]);
 			token_y.push_back(token_ids[j]);	
 		}
-
+		
 		TX.reserve(num_seq);
 		Y.reserve(num_seq);
-
+		
 		for (int i = 0; i < num_seq; ++i)
 		{
-			vector<long long> temp;
+			vector<long long> temp1;
 			vector<long long> temp2;
-		
-			temp.reserve(seq_len + i);
+			temp1.reserve(seq_len);
 			temp2.reserve(seq_len);
-
 			for (int j = 0 + i; j < seq_len + i; ++j)
 			{
-				temp.push_back(token_x[j]);
+				temp1.push_back(token_x[j]);
 				temp2.push_back(token_y[j]);
 			}
-			TX.push_back(temp);
+			TX.push_back(temp1);
 			Y.push_back(temp2);
 		}
 	}
@@ -181,19 +183,53 @@ public:
 		k_h = Tensor::transpose(k_h);
 		v_h = Tensor::transpose(v_h);
 	}
+	
+	float max_abs(
+	    const vector<vector<float>>& m)
+	{
+	    float mx = 0.0f;
 
+	    for (auto& r : m)
+	    {
+	        for (float x : r)
+	        {
+	            mx = max(mx, fabs(x));
+	        }
+	    }
+
+	    return mx;
+	}
+
+float max_abs(
+    const vector<vector<vector<float>>>& tensor)
+{
+    float mx = 0.0f;
+
+    for (const auto& m : tensor)
+    {
+        for (const auto& row : m)
+        {
+            for (float x : row)
+            {
+                mx = max(
+                    mx,
+                    fabs(x)
+                );
+            }
+        }
+    }
+
+    return mx;
+}
 	void Transformers()
 	{
 		for (int epochs = 0; epochs < train; ++epochs)
 		{
 			int ct = 0;
 			float total_loss = 0.0f;
-
+			cout << "Epochs : " << epochs + 1 << " -> ";
 			for (int batch = 0; batch < num_seq; batch+=batch_size)
 			{
-				flag ? cout << "======================================================================" << endl : cout << "";
-				flag ? cout << "Batch " << ++ct << " Started...." << endl << endl : cout << "";
-				
 				vector<vector<vector<float>>> X;
 				X.reserve(batch_size);
 				for (int seq = batch; seq < batch_size + batch; ++seq)
@@ -328,9 +364,6 @@ public:
 
 				float loss = 0.0f;
 				
-				flag ? cout << "Batch " << ct << "Forward pass Started...." << endl : cout << "";
-				flag ? cout << "================================================================" << endl : cout << "";
-				
 				for (int seq = 0; seq < batch_size; ++seq)
 				{
 
@@ -418,24 +451,13 @@ public:
 
 					t_mlp_residual.reserve(block_size);
 
-					flag ? cout << "=======================================================" << endl : cout << "";
-					flag ? cout << "seq " << seq + 1 << " Started...." << endl : cout << "";
-					
-					flag ? cout << "Input Dropouting......" : cout << "";
-					auto dropout_mask = Tensor::dropout_mask(seq_len, embed_size, dropout_rate);
+					auto dropout_mask = Random::dropout_mask(seq_len, embed_size, dropout_rate);
 					input_dropout_mask.push_back(dropout_mask);
 					auto X_input2 = Tensor::dropout(X[seq], dropout_mask, dropout_prob);	
-					flag ? cout << "Done......" << endl : cout << "";
 
 					for (int i = 0; i < block_size; ++i)
 					{
-						flag ? cout << "=========================================" << endl : cout << "";
-						flag ? cout << i + 1 << " Block started...." << endl : cout << "";
-						flag ? cout << "=========================================" << endl : cout << "";
-
 						auto residual = X_input2;
-						
-						flag ? cout << "Block First Layer normalizing....." : cout << "";
 						
 						t_l1_X.push_back(X_input2);
 						
@@ -456,10 +478,6 @@ public:
 						t_l1_std.push_back(t2_l1_std);
 						t_l1_X_STD.push_back(t2_l1_X_STD);
 
-						flag ? cout << "Done..." << endl : cout << "";
-						
-						flag ? cout << "Block Linear Projecting....." : cout << "";
-
 						t_QKV_input.push_back(X_input2);
 						
 						linear_projection(X_input2, i);
@@ -471,11 +489,7 @@ public:
 						t_Q_cache_H.push_back(q_h);
 						t_K_cache_H.push_back(k_h);
 						t_V_cache_H.push_back(v_h);
-						
-						
-						flag ? cout << "Done..." << endl : cout << "";
-
-						flag ? cout << "Block attension Score Calculating....." : cout << "";
+												
 						vector<vector<vector<float>>> t2_attension_score;
 						vector<vector<vector<float>>> t2_scaled_score;
 						vector<vector<vector<float>>> t2_masked_score;
@@ -501,23 +515,16 @@ public:
 						t_merged_heads.push_back(t2_merged_heads);
 						t_attension_projected.push_back(attension);
 
-						flag ? cout << "Done..." << endl : cout << "";
-
-						flag ? cout << "Attension Score Dropouting......" : cout << "";
-						dropout_mask = Tensor::dropout_mask(seq_len, embed_size, dropout_rate);
+						dropout_mask = Random::dropout_mask(seq_len, embed_size, dropout_rate);
 						t_attension_mask.push_back(dropout_mask);
 						X_input2 = Tensor::dropout(attension, dropout_mask, dropout_prob);
-						flag ? cout << "Done..." << endl : cout << "";
 
-						flag ? cout << "First Residual Adding......" : cout << "";
 						t_attension_residual.push_back(residual);
 						X_input2 = Tensor::matadd(residual, X_input2);
-						flag ? cout << "Done..." << endl : cout << "";
 						
 						residual = X_input2;
 						t_mlp_residual.push_back(residual);
 
-						flag ? cout << "Block Second Layer normalizing....." : cout << "";
 						t_l2_X.push_back(X_input2);
 						
 						vector<vector<float>> t2_l2_X_STD;
@@ -536,43 +543,24 @@ public:
 						t_l2_var.push_back(t2_l2_var);
 						t_l2_std.push_back(t2_l2_std);
 						t_l2_X_STD.push_back(t2_l2_X_STD);
-						flag ? cout << "Done..." << endl << endl : cout << "";
 
-						flag ? cout << "Linear Layer Started......" << endl : cout << "";
-						
-						flag ? cout << "Linear1 Calulating......" : cout << "";
 						t_linear1_input.push_back(X_input2);
 						X_input2 = Tensor::dot_product(X_input2, w1[i]);
 						t_linear1_output.push_back(X_input2);
-						flag ? cout << "Done..." << endl : cout << "";
-						
-						flag ? cout << "Gelu Calculating......" : cout << "";
+
 						t_gelu_input.push_back(X_input2);
 						Function::gelu(X_input2);
 						t_gelu_output.push_back(X_input2);
-						flag ? cout << "Done..." << endl : cout << "";
 
-						flag ? cout << "Linear2 Calulating......" : cout << "";
 						t_linear2_input.push_back(X_input2);
 						X_input2 = Tensor::dot_product(X_input2, w2[i]);
 						t_linear2_output.push_back(X_input2);
-						flag ? cout << "Done..." << endl : cout << "";
-						
-						flag ? cout << "Linear Layer Calculated...." << endl << endl : cout << "";
 
-						flag ? cout << "Linear Output Dropouting......" : cout << "";
-						dropout_mask = Tensor::dropout_mask(seq_len, embed_size, dropout_rate);
+						dropout_mask = Random::dropout_mask(seq_len, embed_size, dropout_rate);
 						t_mlp_mask.push_back(dropout_mask);
 						X_input2 = Tensor::dropout(X_input2, dropout_mask, dropout_prob);
-						flag ? cout << "Done..." << endl : cout << "";
 						
-						flag ? cout << "Second Residual Adding......" : cout << "";
 						X_input2 = Tensor::matadd(residual, X_input2);
-						flag ? cout << "Done..." << endl : cout << "";
-						
-						flag ? cout << "=========================================" << endl : cout << "";
-						flag ? cout << i + 1 << " ended...." << endl : cout << "";
-						flag ? cout << "=========================================" << endl << endl : cout << "";
 					}
 					
 					l1_X.push_back(t_l1_X);
@@ -617,8 +605,6 @@ public:
 
 					linear2_input.push_back(t_linear2_input);
 					linear2_output.push_back(t_linear2_output);
-
-					flag ? cout << "Final Layer normalizing....." : cout << "";
 		
 					vector<vector<float>> t2_final_X_STD;
 					vector<float> t2_final_mean;
@@ -633,25 +619,20 @@ public:
 					final_std.push_back(t2_final_std);
 					final_X_STD.push_back(t2_final_X_STD);
 
-					flag ? cout << "Done..." << endl : cout << "";
-
-					flag ? cout << "LM Head Projecting....." : cout << "";
 					hidden_states.push_back(X_input2);
 					X_input2 = Tensor::dot_product(X_input2, w_vocab);
 					logits.push_back(X_input2);
-					flag ? cout << "Done..." << endl : cout << "";
-					
-					flag ? cout << "Softmax....." : cout << "";
+
 					Function::softmax(X_input2);
 					softmax_probs.push_back(X_input2);
-					flag ? cout << "Done..." << endl : cout << "";
-					
-					flag ? cout << "Calculating Loss....." : cout << "";
-					for (int lss = 0; lss < seq_len; ++lss) loss += -log(X_input2[lss][Y[batch + seq][lss]]);
-					X_input.push_back(X_input2);
-					flag ? cout << "Done..." << endl : cout << "";
 
-					flag ? cout << "Calculating Gradients....." : cout << "";
+					for (int lss = 0; lss < seq_len; ++lss)
+					{
+						float p = std::max(X_input2[lss][Y[batch + seq][lss]], 1e-9f);
+						loss += -log(p);
+					}
+					X_input.push_back(X_input2);
+
 					vector<vector<float>> gradient;
 					vector<long long> t_target_ids;
 					gradient.reserve(seq_len);
@@ -666,20 +647,10 @@ public:
 					}
 					d_logits.push_back(gradient);
 					target_ids.push_back(t_target_ids);
-					flag ? cout << "Done..." << endl : cout << "";
-
-					flag ? cout << "Done..." << endl << endl : cout << "";
-					flag ? cout << "=======================================================" << endl : cout << "";
 				}
-				flag ? cout << "Calculating Batch " << ct << " Loss....." : cout << "";
-				total_loss += (loss / (batch_size * seq_len));
-				flag ? cout << "Done..." : cout << "";
-				flag ? cout << "Batch " << ct << " Forward pass ended...." << endl : cout << "";
-				flag ? cout << "================================================================" << endl << endl : cout << "";
+				loss = (loss / (batch_size * seq_len));
+				total_loss += loss;
 
-				flag ? cout << "Batch " << ct << " Backward pass Started...." << endl : cout << "";
-				flag ? cout << "================================================================" << endl << endl : cout << "";
-				
 				vector<vector<float>> dw_vocab(embed_size, vector<float>(vocab_size, 0.0f));
 				vector<vector<vector<float>>> dh;
 				
@@ -687,7 +658,6 @@ public:
 				
 				dh.reserve(batch_size);
 				
-				flag ? cout << " LM Head Backwarding...." << endl : cout << "";
 				for (int gra = 0; gra < batch_size; ++gra)
 				{
 					auto h_t = Tensor::transpose(hidden_states[gra]);
@@ -696,18 +666,15 @@ public:
 
 					dh.push_back(Tensor::dot_product(d_logits[gra], embed_mat_t2));
 				}
-				flag ? cout << "Done..." << endl << endl : cout << "";
 
-				flag ? cout << "Final Layer Norm Backward....." : cout << "";
 				auto dg = Tensor::matmul_e(dh, final_X_STD);
 				auto dfinal_gamma = Tensor::sum(dg);
 				auto dfinal_beta = Tensor::sum(dh);
 				auto dx_hat = Tensor::normalized_gradient(dh, final_gamma);
-				auto dvar = Tensor::variance_gradient(final_X, dx_hat, final_mean, final_var);
+				auto dvar = Tensor::variance_gradient(dx_hat, final_X, final_mean, final_var);
 				auto dmean = Tensor::mean_gradient(dx_hat, final_X_STD, dvar, final_std);
 				auto dx = Tensor::input_gradient(dx_hat, final_X_STD, dvar, dmean, final_std);
-				flag ? cout << "Done..." << endl: cout << "";
-				
+
 				vector<vector<vector<float>>> dw2(block_size, vector<vector<float>> (hidden_size, vector<float>(embed_size, 0.0f)));
 				vector<vector<vector<float>>> dw1(block_size, vector<vector<float>> (embed_size, vector<float>(hidden_size, 0.0f)));
 				vector<vector<float>> dgamma2(block_size, vector<float>(embed_size, 0.0f));
@@ -722,7 +689,6 @@ public:
 				vector<vector<float>> dembed_mat(vocab_size, vector<float>(embed_size, 0.0f));
 				vector<vector<float>> dpos_mat(seq_len, vector<float>(embed_size, 0.0f));
 
-				flag ? cout << "Transformer Backward....." : cout << "";
 				for (int back_batch = 0; back_batch < batch_size; ++back_batch)
 				{
 					auto d_mlp_residual = dx[back_batch];
@@ -893,10 +859,10 @@ public:
 						dBlockInput = Tensor::matadd(dBlockInput, dResidual_Attn);
 						d_mlp_residual = dBlockInput;
 						dmlp = dBlockInput;
-
-						auto dinput = Tensor::dropout(dmlp, input_dropout_mask[back_batch], dropout_prob);
-						Tensor::embed_pos_backward(dinput, dembed_mat, dpos_mat, TX[batch + back_batch]);
+						break;						
 					}
+					auto dinput = Tensor::dropout(dmlp, input_dropout_mask[back_batch], dropout_prob);
+					Tensor::embed_pos_backward(dinput, dembed_mat, dpos_mat, TX[batch + back_batch]);
 				}
 				Tensor::SGD(embed_mat, dembed_mat, learning_rate);
 				Tensor::SGD(pos_mat, dpos_mat, learning_rate);
@@ -912,17 +878,11 @@ public:
 				Tensor::SGD(gamma2, dgamma2, learning_rate);
 				Tensor::SGD(beta2, dbeta2, learning_rate);
 				Tensor::SGD(final_gamma, dfinal_gamma, learning_rate);
-				Tensor::SGD(final_beta, dfinal_beta, learning_rate);			
-				flag ? cout << "Done..." << endl: cout << "";
-
-				flag ? cout << "Batch " << ct << "Backward pass ended...." << endl : cout << "";
-				flag ? cout << "================================================================" << endl << endl : cout << "";
-
-				flag ? cout << "Batch " << ct << " ended...." << endl : cout << "";
+				Tensor::SGD(final_beta, dfinal_beta, learning_rate);
 			}
-			cout << "Step : " << epochs + 1 << " Loss : " << total_loss << endl;
+			cout << "Total Loss : " << total_loss / batch_size << endl;
 		}
-	}
+	}	
 };
 
 #endif
