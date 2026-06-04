@@ -4,11 +4,10 @@
 #include <iostream>
 #include <fstream>
 #include <cmath>
-#include "Tensor.hpp"
+#include "Tensor.cuh"
 #include "Display.hpp"
-#include "Attension.hpp"
+#include "Attension.cuh"
 #include "../utils/ini.h"
-#include "Random.hpp"
 
 class Transformer
 {
@@ -104,21 +103,21 @@ public:
 			w1.reserve(block_size);
 			w2.reserve(block_size);	
 			
-			embed_mat = Random::random(vocab_size, embed_size);
-			pos_mat = Random::random(seq_len, embed_size);
+			embed_mat = Tensor::random(vocab_size, embed_size);
+			pos_mat = Tensor::random(seq_len, embed_size);
 			gamma1.assign(block_size, vector<float>(embed_size, 1.0f));
 			beta1.assign(block_size, vector<float>(embed_size, 0.0f));
 			gamma2.assign(block_size, vector<float>(embed_size, 1.0f));
 			beta2.assign(block_size, vector<float>(embed_size, 0.0f));			
 			final_gamma.assign(embed_size, 1.0f);
 			final_beta.assign(embed_size, 0.0f);
-			wq = Random::random(block_size, embed_size, embed_size);
-			wk = Random::random(block_size, embed_size, embed_size);
-			wv = Random::random(block_size, embed_size, embed_size);
-			wo = Random::random(block_size, embed_size, embed_size);
-			w1 = Random::random(block_size, embed_size, hidden_size);
-			w2 = Random::random(block_size, hidden_size, embed_size);
-			w_vocab = Random::random(embed_size, vocab_size);
+			wq = Tensor::random(block_size, embed_size, embed_size);
+			wk = Tensor::random(block_size, embed_size, embed_size);
+			wv = Tensor::random(block_size, embed_size, embed_size);
+			wo = Tensor::random(block_size, embed_size, embed_size);
+			w1 = Tensor::random(block_size, embed_size, hidden_size);
+			w2 = Tensor::random(block_size, hidden_size, embed_size);
+			w_vocab = Tensor::random(embed_size, vocab_size);
 
 			cout << "Done....." << endl;
 		}
@@ -451,7 +450,7 @@ float max_abs(
 
 					t_mlp_residual.reserve(block_size);
 
-					auto dropout_mask = Random::dropout_mask(seq_len, embed_size, dropout_rate);
+					auto dropout_mask = Tensor::dropout_mask(seq_len, embed_size, dropout_rate);
 					input_dropout_mask.push_back(dropout_mask);
 					auto X_input2 = Tensor::dropout(X[seq], dropout_mask, dropout_prob);	
 
@@ -515,7 +514,7 @@ float max_abs(
 						t_merged_heads.push_back(t2_merged_heads);
 						t_attension_projected.push_back(attension);
 
-						dropout_mask = Random::dropout_mask(seq_len, embed_size, dropout_rate);
+						dropout_mask = Tensor::dropout_mask(seq_len, embed_size, dropout_rate);
 						t_attension_mask.push_back(dropout_mask);
 						X_input2 = Tensor::dropout(attension, dropout_mask, dropout_prob);
 
@@ -556,7 +555,7 @@ float max_abs(
 						X_input2 = Tensor::dot_product(X_input2, w2[i]);
 						t_linear2_output.push_back(X_input2);
 
-						dropout_mask = Random::dropout_mask(seq_len, embed_size, dropout_rate);
+						dropout_mask = Tensor::dropout_mask(seq_len, embed_size, dropout_rate);
 						t_mlp_mask.push_back(dropout_mask);
 						X_input2 = Tensor::dropout(X_input2, dropout_mask, dropout_prob);
 						

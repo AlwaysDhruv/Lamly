@@ -1,7 +1,7 @@
 #ifndef ATTENSION
 #define ATTENSION
 
-#include "Function.hpp"
+#include "Function.cuh"
 
 using namespace std;
 
