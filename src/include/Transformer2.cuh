@@ -153,8 +153,29 @@ public:
 
 	void Dhruv()
 	{
-		Tensor::display(token_x, xy_size);
-		Tensor::display(token_y, xy_size);
+        vector<long long> h(xy_size);
+
+        cudaMemcpy(
+            h.data(),
+            token_x,
+            xy_size * sizeof(long long),
+            cudaMemcpyDeviceToHost);
+
+		int ct = 0;
+		for(int i = 0; i < num_seq; i+=batch_size)
+		{
+			for(int j = i; j < batch_size + i; j++)
+			{
+				for(int k = j; k < seq_len + j; k++)
+				{
+					cout << h[k] << " ";
+				}
+				cout << endl;
+			}
+			++ct;
+			cout << endl;
+		}
+		cout << endl << ct << endl;
 	}
 };
 
