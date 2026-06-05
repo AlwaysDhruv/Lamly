@@ -9,7 +9,7 @@ find_package(CUDAToolkit REQUIRED)
 
 add_executable(app
     main.cu
-    src/Tensor.cu
+    src/include/Tensor.cu
 )
 
 target_include_directories(app PRIVATE
