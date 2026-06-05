@@ -64,5 +64,44 @@ namespace Tensor
             mean,
             std);
     }
+
+    void display(
+        const float* d_ptr,
+        size_t n)
+    {
+        std::vector<float> h(n);
+
+        cudaMemcpy(
+            h.data(),
+            d_ptr,
+            n * sizeof(float),
+            cudaMemcpyDeviceToHost);
+
+        for (size_t i = 0; i < n; i++)
+        {
+            std::cout << h[i] << ' ';
+        }
+        std::cout << '\n';
+    }
+
+    void display(
+        const long long* d_ptr,
+        size_t n)
+    {
+        std::vector<long long> h(n);
+
+        cudaMemcpy(
+            h.data(),
+            d_ptr,
+            n * sizeof(long long),
+            cudaMemcpyDeviceToHost);
+
+        for (size_t i = 0; i < n; i++)
+        {
+            std::cout << h[i] << ' ';
+        }
+
+        std::cout << '\n';
+    }
 }
 #endif

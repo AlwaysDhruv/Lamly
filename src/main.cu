@@ -60,7 +60,7 @@ int main(int argc, char const *argv[])
 
 	Transformer tr(token_ids);
 
-	tr.input_embedding();
+	tr.Dhruv();
 	
 	return 0;
 }

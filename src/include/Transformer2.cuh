@@ -32,6 +32,8 @@ class Transformer
 	float learning_rate;
 
 	vector<long long> token_ids;
+	long long* token_x;
+	long long* token_y;
 	
 	vector<vector<long long>> Y;
 	vector<vector<long long>> X;
@@ -85,7 +87,14 @@ public:
 			learning_rate = stof(in["GPT"]["Learning_rate"]);
 			train = stoi(in["GPT"]["Train"]);
 			cout << "Done....." << endl;
-
+			
+			cout << "Tokens Impoting.......";
+			cudaMalloc(&token_x, xy_size * sizeof(long long));
+			cudaMalloc(&token_y, xy_size * sizeof(long long));
+			cudaMemcpy(token_x, token_ids.data(), xy_size * sizeof(long long), cudaMemcpyHostToDevice);
+			cudaMemcpy(token_y, token_ids.data() + 1, xy_size * sizeof(long long), cudaMemcpyHostToDevice);			
+			cout << "Done....." << endl;
+			
 			cout << "Weigths Initializing....";
 
 			Tensor::init_rng();
@@ -142,40 +151,11 @@ public:
 		else cout << "config.ini Have Problem...." << endl;
 	}
 
-	void input_embedding()
+	void Dhruv()
 	{
-		vector<long long> token_x;
-		vector<long long> token_y;
-
-		token_x.reserve(tokens_size - 1);
-		token_y.reserve(tokens_size);
-
-		for (int i = 0, j = 1; i < tokens_size - 1, j < tokens_size; ++i, ++j)
-		{
-			token_x.push_back(token_ids[i]);
-			token_y.push_back(token_ids[j]);	
-		}
-		
-		X.reserve(num_seq);
-		Y.reserve(num_seq);
-		
-		for (int i = 0; i < num_seq; ++i)
-		{
-			vector<long long> temp1;
-			vector<long long> temp2;
-			temp1.reserve(seq_len);
-			temp2.reserve(seq_len);
-			for (int j = 0 + i; j < seq_len + i; ++j)
-			{
-				temp1.push_back(token_x[j]);
-				temp2.push_back(token_y[j]);
-			}
-			X.push_back(temp1);
-			Y.push_back(temp2);
-		}
+		Tensor::display(token_x, xy_size);
+		Tensor::display(token_y, xy_size);
 	}
-
-	
 };
 
 #endif

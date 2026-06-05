@@ -20,6 +20,14 @@ namespace Tensor
         size_t n,
         float mean = 0.0f,
         float std = 0.02f);
+
+    void display(
+        const long long* d_ptr,
+        size_t n);
+
+    void display(
+        const float* d_ptr,
+        size_t n);        
 }
 
 #endif
