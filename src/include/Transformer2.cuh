@@ -32,6 +32,9 @@ class Transformer
 	float learning_rate;
 
 	vector<long long> token_ids;
+	
+	vector<vector<long long>> Y;
+	vector<vector<long long>> X;
 
 	float* embed_mat;
 	float* pos_mat;
@@ -137,6 +140,39 @@ public:
 			cout << "Done....." << endl;
 		}
 		else cout << "config.ini Have Problem...." << endl;
+	}
+
+	void input_embedding()
+	{
+		vector<long long> token_x;
+		vector<long long> token_y;
+
+		token_x.reserve(tokens_size - 1);
+		token_y.reserve(tokens_size);
+
+		for (int i = 0, j = 1; i < tokens_size - 1, j < tokens_size; ++i, ++j)
+		{
+			token_x.push_back(token_ids[i]);
+			token_y.push_back(token_ids[j]);	
+		}
+		
+		X.reserve(num_seq);
+		Y.reserve(num_seq);
+		
+		for (int i = 0; i < num_seq; ++i)
+		{
+			vector<long long> temp1;
+			vector<long long> temp2;
+			temp1.reserve(seq_len);
+			temp2.reserve(seq_len);
+			for (int j = 0 + i; j < seq_len + i; ++j)
+			{
+				temp1.push_back(token_x[j]);
+				temp2.push_back(token_y[j]);
+			}
+			X.push_back(temp1);
+			Y.push_back(temp2);
+		}
 	}
 };
 

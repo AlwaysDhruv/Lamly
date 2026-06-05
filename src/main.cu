@@ -3,26 +3,64 @@
 #include <vector>
 #include "./include/BPE.hpp"
 #include "./include/Transformer2.cuh"
+
 using namespace std;
 
-int main(int argc, char const *argv[])
+void save_tokens(
+    const vector<long long>& token_ids,
+    const string& path)
 {
-	Tokenization tk;
+    ofstream file(path, ios::binary);
 
-	vector<string> tokens;
-	vector<long long> token_ids;
+    size_t size = token_ids.size();
 
-	cout << "Encoding starts for test.txt....";
+    file.write(
+        reinterpret_cast<const char*>(&size),
+        sizeof(size));
 
-	tk.encoding("../data/test.txt", tokens, token_ids);
+    file.write(
+        reinterpret_cast<const char*>(token_ids.data()),
+        size * sizeof(long long));
+}
 
+vector<long long> load_tokens(
+    const string& path)
+{
+    ifstream file(path, ios::binary);
+
+    size_t size;
+
+    file.read(
+        reinterpret_cast<char*>(&size),
+        sizeof(size));
+
+    vector<long long> token_ids(size);
+
+    file.read(
+        reinterpret_cast<char*>(token_ids.data()),
+        size * sizeof(long long));
+
+    return token_ids;
+}
+
+int main(int argc, char const *argv[])
+{	
+	cout << "Token Ids Imprting from tokens.txt....";
+	vector<long long> token_ids = load_tokens("tokens.bin");
 	cout << "done with " << token_ids.size() << " ids....." << endl;
+
+	// //tk.fit("../data/test.txt", 1000);
+	// cout << "Encoding starts for test.txt....";
+	
+	// tk.encoding("../data/test.txt", tokens, token_ids);
+	// save_tokens(token_ids, "tokens.bin");
+	// cout << "done with " << token_ids.size() << " ids....." << endl;
+
+	Tokenization tk;
 
 	Transformer tr(token_ids);
 
 	tr.input_embedding();
 	
-	tr.Transformers();
-
 	return 0;
 }
