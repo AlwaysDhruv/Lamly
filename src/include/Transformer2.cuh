@@ -33,27 +33,16 @@ class Transformer
 
 	vector<long long> token_ids;
 
-	long long* Y;
-	long long* TX;
-
-	float* embed_x;
 	float* embed_mat;
 	float* pos_mat;
 
-	float* w_vocab;
 	float* wq;
 	float* wk;
 	float* wv;
 	float* wo;
 	float* w1;
 	float* w2;
-	float* q;
-	float* k;
-	float* v;
-
-	float* q_h;
-	float* k_h;
-	float* v_h;	
+	float* w_vocab;
 
 	float* gamma1;
 	float* beta1;
@@ -95,32 +84,56 @@ public:
 			cout << "Done....." << endl;
 
 			cout << "Weigths Initializing....";
-			cudaMallocManaged(&embed_mat, (vocab_size * embed_size) * sizeof(float));
-			cudaMallocManaged(&pos_mat, (seq_len * embed_size) * sizeof(float));
-			cudaMallocManaged(&wq, (block_size * embed_size * embed_size) * sizeof(float));
-			cudaMallocManaged(&wk, (block_size * embed_size * embed_size) * sizeof(float));
-			cudaMallocManaged(&wv, (block_size * embed_size * embed_size) * sizeof(float));
-			cudaMallocManaged(&wo, (block_size * embed_size * embed_size) * sizeof(float));
-			
-			cudaMallocManaged(&w1, (block_size * embed_size * hidden_size) * sizeof(float));
-			cudaMallocManaged(&w2, (block_size * hidden_size * embed_size) * sizeof(float));
-			
-			cudaMallocManaged(&q, (block_size * seq_len * embed_size) * sizeof(float));
-			cudaMallocManaged(&k, (block_size * seq_len * embed_size) * sizeof(float));
-			cudaMallocManaged(&v, (block_size * seq_len * embed_size) * sizeof(float));
-			
-			cudaMallocManaged(&q_h, (block_size * seq_len * head_size * head_dim) * sizeof(float));
-			cudaMallocManaged(&k_h, (block_size * seq_len * head_size * head_dim) * sizeof(float));
-			cudaMallocManaged(&v_h, (block_size * seq_len * head_size * head_dim) * sizeof(float));
 
-			cudaMallocManaged(&gamma1, (block_size * embed_size) * sizeof(float));
-			cudaMallocManaged(&beta1, (block_size * embed_size) * sizeof(float));
+			Tensor::init_rng();
 
-			cudaMallocManaged(&gamma2, (block_size * embed_size) * sizeof(float));
-			cudaMallocManaged(&beta2, (block_size * embed_size) * sizeof(float));
+			size_t size = vocab_size * embed_size;
+			cudaMalloc(&embed_mat, size  * sizeof(float));
+			Tensor::random(embed_mat, size);
 
-			cudaMallocManaged(&final_gamma, embed_size * sizeof(float));
-			cudaMallocManaged(&final_beta, embed_size * sizeof(float));
+			size = seq_len * embed_size;
+			cudaMalloc(&pos_mat, size * sizeof(float));
+			Tensor::random(pos_mat, size);
+			
+			size = block_size * embed_size * embed_size;
+			cudaMalloc(&wq, size * sizeof(float));
+			cudaMalloc(&wk, size * sizeof(float));
+			cudaMalloc(&wv, size * sizeof(float));
+			cudaMalloc(&wo, size * sizeof(float));
+			Tensor::random(wq, size);
+			Tensor::random(wk, size);
+			Tensor::random(wv, size);
+			Tensor::random(wo, size);
+			
+			size = block_size * embed_size * hidden_size;
+			cudaMalloc(&w1, size * sizeof(float));
+			Tensor::random(w1, size);
+
+			size = block_size * hidden_size * embed_size;
+			cudaMalloc(&w2, size * sizeof(float));
+			Tensor::random(w2, size);
+
+			size = vocab_size * embed_size;
+			cudaMalloc(&w_vocab, size  * sizeof(float));
+			Tensor::random(w_vocab, size);
+			
+			size = block_size * embed_size;
+			cudaMalloc(&gamma1, size * sizeof(float));
+			cudaMalloc(&beta1, size * sizeof(float));
+			cudaMalloc(&gamma2, (block_size * embed_size) * sizeof(float));
+			cudaMalloc(&beta2, (block_size * embed_size) * sizeof(float));
+			Tensor::fill(gamma1, 1.0f, size);
+			Tensor::fill(beta1, 0.0f, size);
+			Tensor::fill(gamma2, 1.0f, size);
+			Tensor::fill(beta2, 0.0f, size);
+
+			cudaMalloc(&final_gamma, embed_size * sizeof(float));
+			cudaMalloc(&final_beta, embed_size * sizeof(float));
+			Tensor::fill(final_gamma, 1.0f, embed_size);
+			Tensor::fill(final_beta, 0.0f, embed_size);
+
+			Tensor::destroy_rng();
+			
 			cout << "Done....." << endl;
 		}
 		else cout << "config.ini Have Problem...." << endl;
