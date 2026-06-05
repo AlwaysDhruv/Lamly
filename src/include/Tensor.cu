@@ -1,7 +1,11 @@
 #ifndef ADD_CUH
 #define ADD_CUH
 
+#include <iostream>
 #include "Tensor.cuh"
+#include <vector>
+
+using namespace std;
 
 namespace
 {
@@ -69,39 +73,42 @@ namespace Tensor
         const float* d_ptr,
         size_t n)
     {
-        std::vector<float> h(n);
+        vector<float> h(n);
 
         cudaMemcpy(
             h.data(),
             d_ptr,
             n * sizeof(float),
             cudaMemcpyDeviceToHost);
-
+        
+        cout << "Shape : " << n << endl;
         for (size_t i = 0; i < n; i++)
         {
-            std::cout << h[i] << ' ';
+            cout << h[i] << ' ';
         }
-        std::cout << '\n';
+        cout << '\n';
     }
 
     void display(
         const long long* d_ptr,
         size_t n)
     {
-        std::vector<long long> h(n);
+        vector<long long> h(n);
 
         cudaMemcpy(
             h.data(),
             d_ptr,
             n * sizeof(long long),
             cudaMemcpyDeviceToHost);
+        
+        cout << "Shape : " << n << endl;
 
         for (size_t i = 0; i < n; i++)
         {
-            std::cout << h[i] << ' ';
+            cout << h[i] << ' ';
         }
 
-        std::cout << '\n';
+        cout << '\n';
     }
 }
 #endif
