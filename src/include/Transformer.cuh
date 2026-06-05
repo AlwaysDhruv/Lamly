@@ -182,44 +182,7 @@ public:
 		k_h = Tensor::transpose(k_h);
 		v_h = Tensor::transpose(v_h);
 	}
-	
-	float max_abs(
-	    const vector<vector<float>>& m)
-	{
-	    float mx = 0.0f;
 
-	    for (auto& r : m)
-	    {
-	        for (float x : r)
-	        {
-	            mx = max(mx, fabs(x));
-	        }
-	    }
-
-	    return mx;
-	}
-
-float max_abs(
-    const vector<vector<vector<float>>>& tensor)
-{
-    float mx = 0.0f;
-
-    for (const auto& m : tensor)
-    {
-        for (const auto& row : m)
-        {
-            for (float x : row)
-            {
-                mx = max(
-                    mx,
-                    fabs(x)
-                );
-            }
-        }
-    }
-
-    return mx;
-}
 	void Transformers()
 	{
 		for (int epochs = 0; epochs < train; ++epochs)
