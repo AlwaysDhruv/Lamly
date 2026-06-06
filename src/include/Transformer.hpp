@@ -183,7 +183,7 @@ public:
 		k_h = Tensor::transpose(k_h);
 		v_h = Tensor::transpose(v_h);
 	}
-
+	
 	void Transformers()
 	{
 		for (int epochs = 0; epochs < train; ++epochs)

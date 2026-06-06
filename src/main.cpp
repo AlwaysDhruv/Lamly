@@ -47,10 +47,12 @@ vector<long long> load_tokens(
 
 int main(int argc, char const *argv[])
 {
-	Tokenization tk;
+	//Tokenization tk;
 	
-	vector<string> tokens;
+	//vector<string> tokens;
+    cout << "Tokens IDs Importing......";
 	vector<long long> token_ids = load_tokens("tokens.bin");
+    cout << "Done..." << endl;
 
 	// //tk.fit("../data/test.txt", 1000);
 	// cout << "Encoding starts for test.txt....";
