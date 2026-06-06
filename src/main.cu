@@ -60,6 +60,8 @@ int main(int argc, char const *argv[])
 
     Transformer tr(token_ids);
 
+    tr.input_embeding();
+
     tr.prepare();
     
     return 0;

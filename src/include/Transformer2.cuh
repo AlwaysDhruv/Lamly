@@ -32,10 +32,8 @@ class Transformer
 	float learning_rate;
 
 	vector<long long> token_ids;
-	long long* token_x;
-	long long* token_y;
-	
-	float* X;
+	vector<vector<long long>> x;
+	vector<vector<long long>> y;
 
 	float* embed_mat;
 	float* pos_mat;
@@ -86,15 +84,7 @@ public:
 			learning_rate = stof(in["GPT"]["Learning_rate"]);
 			train = stoi(in["GPT"]["Train"]);
 			cout << "Done....." << endl;
-			
-			cout << "Tokens Impoting.......";
-			cudaMalloc(&token_x, xy_size * sizeof(long long));
-			cudaMalloc(&token_y, xy_size * sizeof(long long));
-			cudaMalloc(&X, (xy_size * embed_size) * sizeof(float));
-			cudaMemcpy(token_x, token_ids.data(), xy_size * sizeof(long long), cudaMemcpyHostToDevice);
-			cudaMemcpy(token_y, token_ids.data() + 1, xy_size * sizeof(long long), cudaMemcpyHostToDevice);			
-			cout << "Done....." << endl;
-			
+						
 			cout << "Weigths Initializing....";
 
 			Tensor::init_rng();
@@ -151,30 +141,56 @@ public:
 		else cout << "config.ini Have Problem...." << endl;
 	}
 
+	void input_embedding()
+	{
+		vector<long long> token_x;
+		vector<long long> token_y;
+
+		token_x.reserve(tokens_size - 1);
+		token_y.reserve(tokens_size);
+
+		for (int i = 0, j = 1; i < tokens_size - 1, j < tokens_size; ++i, ++j)
+		{
+			token_x.push_back(token_ids[i]);
+			token_y.push_back(token_ids[j]);	
+		}
+		
+		x.reserve(num_seq);
+		y.reserve(num_seq);
+		
+		for (int i = 0; i < num_seq; ++i)
+		{
+			vector<long long> temp1;
+			vector<long long> temp2;
+			temp1.reserve(seq_len);
+			temp2.reserve(seq_len);
+			for (int j = 0 + i; j < seq_len + i; ++j)
+			{
+				temp1.push_back(token_x[j]);
+				temp2.push_back(token_y[j]);
+			}
+			x.push_back(temp1);
+			y.push_back(temp2);
+		}
+	}
+
 	void prepare()
 	{
-		Tensor::prepare_x(X, token_x, embed_mat, pos_mat, batch_size, seq_len, embed_size, num_seq);
-
-		size_t total = batch_size * seq_len * embed_size;
-		vector<float> h(total);
-		cudaMemcpy(h.data(), X, total * sizeof(float), cudaMemcpyDeviceToHost);
-
 		for(int i = 0; i < num_seq; i+=batch_size)
 		{
 			size_t current_batch_size = num_seq < i + batch_size ?  (num_seq - i) + i : batch_size + i;
+
+			long long* token_x_gpu;
+			size_t size = current_batch_size * seq_len;
+			cudaMalloc(&x_input, size * sizeof(long long));
+			
 			for(int j = i; j < current_batch_size; j++)
 			{
 				for(int k = j; k < seq_len + j; k++)
 				{
-					for(int l = k; l < embed_size + k; l++)
-					{
-						cout << h[l] << " ";
-					}
-					cout << endl;
+					//copy tokens to gpu
 				}
-				cout << endl << endl;
 			}
-			cout << endl << endl << endl;
 		}
 	}
 };
