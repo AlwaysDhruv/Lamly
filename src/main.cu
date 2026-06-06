@@ -44,23 +44,23 @@ vector<long long> load_tokens(
 }
 
 int main(int argc, char const *argv[])
-{	
-	cout << "Token Ids Imprting from tokens.txt....";
-	vector<long long> token_ids = load_tokens("tokens.bin");
-	cout << "done with " << token_ids.size() << " ids....." << endl;
+{   
+    cout << "Token Ids Imprting from tokens.txt....";
+    vector<long long> token_ids = load_tokens("tokens.bin");
+    cout << "done with " << token_ids.size() << " ids....." << endl;
 
-	// //tk.fit("../data/test.txt", 1000);
-	// cout << "Encoding starts for test.txt....";
-	
-	// tk.encoding("../data/test.txt", tokens, token_ids);
-	// save_tokens(token_ids, "tokens.bin");
-	// cout << "done with " << token_ids.size() << " ids....." << endl;
+    // //tk.fit("../data/test.txt", 1000);
+    // cout << "Encoding starts for test.txt....";
+    
+    // tk.encoding("../data/test.txt", tokens, token_ids);
+    // save_tokens(token_ids, "tokens.bin");
+    // cout << "done with " << token_ids.size() << " ids....." << endl;
 
-	Tokenization tk;
+    Tokenization tk;
 
-	Transformer tr(token_ids);
+    Transformer tr(token_ids);
 
-	tr.input_embeding();
-	
-	return 0;
+    tr.prepare();
+    
+    return 0;
 }

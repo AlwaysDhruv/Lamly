@@ -90,7 +90,7 @@ public:
 			cout << "Tokens Impoting.......";
 			cudaMalloc(&token_x, xy_size * sizeof(long long));
 			cudaMalloc(&token_y, xy_size * sizeof(long long));
-			cudaMalloc(&X, (xy_size * embed_size) sizeof(float));
+			cudaMalloc(&X, (xy_size * embed_size) * sizeof(float));
 			cudaMemcpy(token_x, token_ids.data(), xy_size * sizeof(long long), cudaMemcpyHostToDevice);
 			cudaMemcpy(token_y, token_ids.data() + 1, xy_size * sizeof(long long), cudaMemcpyHostToDevice);			
 			cout << "Done....." << endl;
@@ -153,11 +153,11 @@ public:
 
 	void prepare()
 	{
-		prepare_x(X, embed_mat, pos_mat, batch_size, seq_len, embed_size);
+		Tensor::prepare_x(X, token_x, embed_mat, pos_mat, batch_size, seq_len, embed_size, num_seq);
 
 		size_t total = batch_size * seq_len * embed_size;
-		vector<float> h(toatl);
-		cudaMemcpy(token_y.data(), X, total * sizeof(float), cudaMemcpyHostToDevice);
+		vector<float> h(total);
+		cudaMemcpy(h.data(), X, total * sizeof(float), cudaMemcpyDeviceToHost);
 
 		for(int i = 0; i < num_seq; i+=batch_size)
 		{
