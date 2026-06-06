@@ -21,6 +21,33 @@ namespace
         if (i < n)
             data[i] = value;
     }
+
+    __global__ void embedding_kernel(
+        const long long* token_ids,
+        const float* embed_mat,
+        const float* pos_mat,
+        float* X,
+        int seq_len,
+        int embed_size,
+        int total)
+    {
+        int idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+        if (idx >= total)
+        return;
+
+        int c = idx % embed_size;
+        int tmp = idx / embed_size;
+
+        int t = tmp % seq_len;
+        int b = tmp / seq_len;
+
+        long long token = token_ids[b * seq_len + t];
+
+        X[idx] =
+            embed_mat[token * embed_size + c]
+            + pos_mat[t * embed_size + c];
+    }    
 }
 
 namespace Tensor
@@ -109,6 +136,17 @@ namespace Tensor
         }
 
         cout << '\n';
+    }
+
+    void prepare_x(float* X, const float* tokens, const float* embed_mat, const float* pos_mat,
+                    int batch_size, int seq_len, int embed_size, int num_seq)
+    {
+        int total = batch_size * seq_len * embed_size;
+
+        int threads = 256;
+        int blocks = (total + threads - 1) / threads;
+
+        embedding_kernel<<<blocks, threads>>>(token_ids, embed_mat, pos_mat, X, seq_len, embed_size, total);
     }
 }
 #endif

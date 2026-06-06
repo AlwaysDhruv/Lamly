@@ -35,8 +35,7 @@ class Transformer
 	long long* token_x;
 	long long* token_y;
 	
-	vector<vector<long long>> Y;
-	vector<vector<long long>> X;
+	float* X;
 
 	float* embed_mat;
 	float* pos_mat;
@@ -91,6 +90,7 @@ public:
 			cout << "Tokens Impoting.......";
 			cudaMalloc(&token_x, xy_size * sizeof(long long));
 			cudaMalloc(&token_y, xy_size * sizeof(long long));
+			cudaMalloc(&X, (xy_size * embed_size) sizeof(float));
 			cudaMemcpy(token_x, token_ids.data(), xy_size * sizeof(long long), cudaMemcpyHostToDevice);
 			cudaMemcpy(token_y, token_ids.data() + 1, xy_size * sizeof(long long), cudaMemcpyHostToDevice);			
 			cout << "Done....." << endl;
@@ -151,31 +151,31 @@ public:
 		else cout << "config.ini Have Problem...." << endl;
 	}
 
-	void Dhruv()
+	void prepare()
 	{
-        vector<long long> h(xy_size);
+		prepare_x(X, embed_mat, pos_mat, batch_size, seq_len, embed_size);
 
-        cudaMemcpy(
-            h.data(),
-            token_x,
-            xy_size * sizeof(long long),
-            cudaMemcpyDeviceToHost);
+		size_t total = batch_size * seq_len * embed_size;
+		vector<float> h(toatl);
+		cudaMemcpy(token_y.data(), X, total * sizeof(float), cudaMemcpyHostToDevice);
 
-		int ct = 0;
 		for(int i = 0; i < num_seq; i+=batch_size)
 		{
-			for(int j = i; j < batch_size + i; j++)
+			size_t current_batch_size = num_seq < i + batch_size ?  (num_seq - i) + i : batch_size + i;
+			for(int j = i; j < current_batch_size; j++)
 			{
 				for(int k = j; k < seq_len + j; k++)
 				{
-					cout << h[k] << " ";
+					for(int l = k; l < embed_size + k; l++)
+					{
+						cout << h[l] << " ";
+					}
+					cout << endl;
 				}
-				cout << endl;
+				cout << endl << endl;
 			}
-			++ct;
-			cout << endl;
+			cout << endl << endl << endl;
 		}
-		cout << endl << ct << endl;
 	}
 };
 
