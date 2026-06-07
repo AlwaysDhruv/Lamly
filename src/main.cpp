@@ -51,7 +51,7 @@ int main(int argc, char const *argv[])
 	
 	//vector<string> tokens;
     cout << "Tokens IDs Importing......";
-	vector<long long> token_ids = load_tokens("tokens.bin");
+	vector<long long> token_ids = load_tokens("../data/tokens.bin");
     cout << "Done..." << endl;
 
 	// //tk.fit("../data/test.txt", 1000);
