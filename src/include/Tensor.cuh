@@ -1,8 +1,11 @@
 #ifndef TENSOR_CUH
 #define TENSOR_CUH
 
+#include <vector>
 #include <cuda_runtime.h>
 #include <curand.h>
+
+using namespace std;
 
 namespace Tensor
 {
@@ -30,7 +33,10 @@ namespace Tensor
         size_t n);
 
     void prepare_x(float* X, const long long* tokens, const float* embed_mat, const float* pos_mat,
-                    int batch_size, int seq_len, int embed_size, int num_seq);        
+                    int batch_size, int seq_len, int embed_size);        
+    
+    long long* flatten(const vector<vector<long long>>& x, int i, int current_batch_size, int seq_len);
+    
 }
 
 #endif

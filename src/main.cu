@@ -56,11 +56,9 @@ int main(int argc, char const *argv[])
     // save_tokens(token_ids, "tokens.bin");
     // cout << "done with " << token_ids.size() << " ids....." << endl;
 
-    Tokenization tk;
-
     Transformer tr(token_ids);
 
-    tr.input_embeding();
+    tr.input_embedding();
 
     tr.prepare();
     

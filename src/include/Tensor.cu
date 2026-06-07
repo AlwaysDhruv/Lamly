@@ -2,8 +2,8 @@
 #define ADD_CUH
 
 #include <iostream>
-#include "Tensor.cuh"
 #include <vector>
+#include "Tensor.cuh"
 
 using namespace std;
 
@@ -138,8 +138,50 @@ namespace Tensor
         cout << '\n';
     }
 
+    void shape(
+        const float* d_ptr,
+        size_t n)
+    {
+        vector<float> h(n);
+
+        cudaMemcpy(
+            h.data(),
+            d_ptr,
+            n * sizeof(float),
+            cudaMemcpyDeviceToHost);
+        
+        cout << "Shape : " << n << endl;
+        for (size_t i = 0; i < n; i++)
+        {
+            cout << h[i] << ' ';
+        }
+        cout << '\n';
+    }
+
+    void shape(
+        const long long* d_ptr,
+        size_t n)
+    {
+        vector<long long> h(n);
+
+        cudaMemcpy(
+            h.data(),
+            d_ptr,
+            n * sizeof(long long),
+            cudaMemcpyDeviceToHost);
+        
+        cout << "Shape : " << n << endl;
+
+        for (size_t i = 0; i < n; i++)
+        {
+            cout << h[i] << ' ';
+        }
+
+        cout << '\n';
+    }
+
     void prepare_x(float* X, const long long* tokens, const float* embed_mat, const float* pos_mat,
-                    int batch_size, int seq_len, int embed_size, int num_seq)
+                    int batch_size, int seq_len, int embed_size)
     {
         int total = batch_size * seq_len * embed_size;
 
@@ -147,6 +189,21 @@ namespace Tensor
         int blocks = (total + threads - 1) / threads;
 
         embedding_kernel<<<blocks, threads>>>(tokens, embed_mat, pos_mat, X, seq_len, embed_size, total);
+    }
+
+    long long* flatten(const vector<vector<long long>>& x, int i, int current_batch_size, int seq_len)
+    {
+        vector<long long> batch_x;
+        batch_x.reserve(current_batch_size * seq_len);
+        
+        for(int j = i; j < current_batch_size + i; ++j) for(int k = 0; k < seq_len; ++k) batch_x.push_back(x[j][k]);
+        
+        size_t bytes = batch_x.size() * sizeof(long long);
+        long long* token_X = nullptr;
+        cudaMalloc(&token_X, bytes);
+        cudaMemcpy(token_X, batch_x.data(), bytes, cudaMemcpyHostToDevice);
+        
+        return token_X;
     }
 }
 #endif

@@ -90,7 +90,7 @@ public:
 			Tensor::init_rng();
 
 			size_t size = vocab_size * embed_size;
-			cudaMalloc(&embed_mat, size  * sizeof(float));
+			cudaMalloc(&embed_mat, size * sizeof(float));
 			Tensor::random(embed_mat, size);
 
 			size = seq_len * embed_size;
@@ -178,19 +178,10 @@ public:
 	{
 		for(int i = 0; i < num_seq; i+=batch_size)
 		{
-			size_t current_batch_size = num_seq < i + batch_size ?  (num_seq - i) + i : batch_size + i;
-
-			long long* token_x_gpu;
-			size_t size = current_batch_size * seq_len;
-			cudaMalloc(&x_input, size * sizeof(long long));
-			
-			for(int j = i; j < current_batch_size; j++)
-			{
-				for(int k = j; k < seq_len + j; k++)
-				{
-					//copy tokens to gpu
-				}
-			}
+			size_t current_batch_size = num_seq < i + batch_size ?  (num_seq - i) : batch_size;
+			long long* token_X = Tensor::flatten(x, i, current_batch_size, seq_len);
+			Tensor::display(token_X, current_batch_size * seq_len);
+			cudaFree(token_X);
 		}
 	}
 };
