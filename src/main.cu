@@ -46,7 +46,7 @@ vector<long long> load_tokens(
 int main(int argc, char const *argv[])
 {   
     cout << "Token Ids Imprting from tokens.txt....";
-    vector<long long> token_ids = load_tokens("tokens.bin");
+    vector<long long> token_ids = load_tokens("../data/tokens.bin");
     cout << "done with " << token_ids.size() << " ids....." << endl;
 
     // //tk.fit("../data/test.txt", 1000);
