@@ -138,57 +138,20 @@ namespace Tensor
         cout << '\n';
     }
 
-    void shape(
-        const float* d_ptr,
-        size_t n)
-    {
-        vector<float> h(n);
-
-        cudaMemcpy(
-            h.data(),
-            d_ptr,
-            n * sizeof(float),
-            cudaMemcpyDeviceToHost);
-        
-        cout << "Shape : " << n << endl;
-        for (size_t i = 0; i < n; i++)
-        {
-            cout << h[i] << ' ';
-        }
-        cout << '\n';
-    }
-
-    void shape(
-        const long long* d_ptr,
-        size_t n)
-    {
-        vector<long long> h(n);
-
-        cudaMemcpy(
-            h.data(),
-            d_ptr,
-            n * sizeof(long long),
-            cudaMemcpyDeviceToHost);
-        
-        cout << "Shape : " << n << endl;
-
-        for (size_t i = 0; i < n; i++)
-        {
-            cout << h[i] << ' ';
-        }
-
-        cout << '\n';
-    }
-
-    void prepare_x(float* X, const long long* tokens, const float* embed_mat, const float* pos_mat,
+    float* prepare_x(const long long* tokens, const float* embed_mat, const float* pos_mat,
                     int batch_size, int seq_len, int embed_size)
     {
+        
         int total = batch_size * seq_len * embed_size;
+        float* X;
+        cudaMalloc(&X, total * sizeof(float));
 
         int threads = 256;
         int blocks = (total + threads - 1) / threads;
 
         embedding_kernel<<<blocks, threads>>>(tokens, embed_mat, pos_mat, X, seq_len, embed_size, total);
+
+        return X;
     }
 
     long long* flatten(const vector<vector<long long>>& x, int i, int current_batch_size, int seq_len)

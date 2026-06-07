@@ -6,11 +6,14 @@
 #include <cmath>
 #include "Tensor.cuh"
 #include "Display.hpp"
-#include "Attension.cuh"
 #include "../utils/ini.h"
+#include <cuda_runtime.h>
+#include <curand_kernel.h>
 
 class Transformer
 {
+	int train;
+	int display;
 	int embed_size;
 	int vocab_size;
 	int seq_len;
@@ -23,45 +26,34 @@ class Transformer
 	int block_size;
 	float head_dim;
 	float scale;
+	bool flag;
 	float dropout_rate;
 	float dropout_prob;
-	int display;
-	bool flag;
 	float learning_rate;
-	int train;
 
 	vector<long long> token_ids;
+	vector<vector<long long>> x;
+	vector<vector<long long>> y;
 
-	vector<vector<float>> embed_mat;
-	vector<vector<float>> pos_mat;
-	vector<vector<float>> embed_x;
+	float* embed_mat;
+	float* pos_mat;
 
-	vector<vector<long long>> Y;
-	vector<vector<long long>> TX;
+	float* wq;
+	float* wk;
+	float* wv;
+	float* wo;
+	float* w1;
+	float* w2;
+	float* w_vocab;
 
-	vector<vector<float>> w_vocab;
-	vector<vector<vector<float>>> wq;
-	vector<vector<vector<float>>> wk;
-	vector<vector<vector<float>>> wv;
-	vector<vector<vector<float>>> wo;
-	vector<vector<vector<float>>> w1;
-	vector<vector<vector<float>>> w2;
-	vector<vector<float>> q;
-	vector<vector<float>> k;
-	vector<vector<float>> v;
+	float* gamma1;
+	float* beta1;
 
-	vector<vector<vector<float>>> q_h;
-	vector<vector<vector<float>>> k_h;
-	vector<vector<vector<float>>> v_h;	
+	float* gamma2;
+	float* beta2;
 
-	vector<vector<float>> gamma1;
-	vector<vector<float>> beta1;
-
-	vector<vector<float>> gamma2;
-	vector<vector<float>> beta2;
-
-	vector<float> final_gamma;
-	vector<float> final_beta;
+	float* final_gamma;
+	float* final_beta;
 public:
 	
 	Transformer(vector<long long>& ids)
@@ -92,33 +84,58 @@ public:
 			learning_rate = stof(in["GPT"]["Learning_rate"]);
 			train = stoi(in["GPT"]["Train"]);
 			cout << "Done....." << endl;
-
+						
 			cout << "Weigths Initializing....";
-			embed_mat.reserve(vocab_size);
-			pos_mat.reserve(seq_len);
-			wq.reserve(block_size);
-			wk.reserve(block_size);
-			wv.reserve(block_size);
-			wo.reserve(block_size);
-			w1.reserve(block_size);
-			w2.reserve(block_size);	
-			
-			embed_mat = Tensor::random(vocab_size, embed_size);
-			pos_mat = Tensor::random(seq_len, embed_size);
-			gamma1.assign(block_size, vector<float>(embed_size, 1.0f));
-			beta1.assign(block_size, vector<float>(embed_size, 0.0f));
-			gamma2.assign(block_size, vector<float>(embed_size, 1.0f));
-			beta2.assign(block_size, vector<float>(embed_size, 0.0f));			
-			final_gamma.assign(embed_size, 1.0f);
-			final_beta.assign(embed_size, 0.0f);
-			wq = Tensor::random(block_size, embed_size, embed_size);
-			wk = Tensor::random(block_size, embed_size, embed_size);
-			wv = Tensor::random(block_size, embed_size, embed_size);
-			wo = Tensor::random(block_size, embed_size, embed_size);
-			w1 = Tensor::random(block_size, embed_size, hidden_size);
-			w2 = Tensor::random(block_size, hidden_size, embed_size);
-			w_vocab = Tensor::random(embed_size, vocab_size);
 
+			Tensor::init_rng();
+
+			size_t size = vocab_size * embed_size;
+			cudaMalloc(&embed_mat, size * sizeof(float));
+			Tensor::random(embed_mat, size);
+
+			size = seq_len * embed_size;
+			cudaMalloc(&pos_mat, size * sizeof(float));
+			Tensor::random(pos_mat, size);
+			
+			size = block_size * embed_size * embed_size;
+			cudaMalloc(&wq, size * sizeof(float));
+			cudaMalloc(&wk, size * sizeof(float));
+			cudaMalloc(&wv, size * sizeof(float));
+			cudaMalloc(&wo, size * sizeof(float));
+			Tensor::random(wq, size);
+			Tensor::random(wk, size);
+			Tensor::random(wv, size);
+			Tensor::random(wo, size);
+			
+			size = block_size * embed_size * hidden_size;
+			cudaMalloc(&w1, size * sizeof(float));
+			Tensor::random(w1, size);
+
+			size = block_size * hidden_size * embed_size;
+			cudaMalloc(&w2, size * sizeof(float));
+			Tensor::random(w2, size);
+
+			size = vocab_size * embed_size;
+			cudaMalloc(&w_vocab, size  * sizeof(float));
+			Tensor::random(w_vocab, size);
+			
+			size = block_size * embed_size;
+			cudaMalloc(&gamma1, size * sizeof(float));
+			cudaMalloc(&beta1, size * sizeof(float));
+			cudaMalloc(&gamma2, (block_size * embed_size) * sizeof(float));
+			cudaMalloc(&beta2, (block_size * embed_size) * sizeof(float));
+			Tensor::fill(gamma1, 1.0f, size);
+			Tensor::fill(beta1, 0.0f, size);
+			Tensor::fill(gamma2, 1.0f, size);
+			Tensor::fill(beta2, 0.0f, size);
+
+			cudaMalloc(&final_gamma, embed_size * sizeof(float));
+			cudaMalloc(&final_beta, embed_size * sizeof(float));
+			Tensor::fill(final_gamma, 1.0f, embed_size);
+			Tensor::fill(final_beta, 0.0f, embed_size);
+
+			Tensor::destroy_rng();
+			
 			cout << "Done....." << endl;
 		}
 		else cout << "config.ini Have Problem...." << endl;
@@ -138,8 +155,8 @@ public:
 			token_y.push_back(token_ids[j]);	
 		}
 		
-		TX.reserve(num_seq);
-		Y.reserve(num_seq);
+		x.reserve(num_seq);
+		y.reserve(num_seq);
 		
 		for (int i = 0; i < num_seq; ++i)
 		{
@@ -152,699 +169,22 @@ public:
 				temp1.push_back(token_x[j]);
 				temp2.push_back(token_y[j]);
 			}
-			TX.push_back(temp1);
-			Y.push_back(temp2);
+			x.push_back(temp1);
+			y.push_back(temp2);
 		}
 	}
 
-	void linear_projection(vector<vector<float>>& X_in, int index)
+	void prepare()
 	{
-		q.clear();
-		k.clear();
-		v.clear();
-		q_h.clear();
-		k_h.clear();
-		v_h.clear();
-
-		q = Tensor::dot_product(X_in, wq[index]);
-		k = Tensor::dot_product(X_in, wk[index]);
-		v = Tensor::dot_product(X_in, wv[index]);
-		
-		q_h.reserve(seq_len);
-		k_h.reserve(seq_len);
-		v_h.reserve(seq_len);
-
-		q_h = Tensor::head_spliting(q, head_size);
-		k_h = Tensor::head_spliting(k, head_size);
-		v_h = Tensor::head_spliting(v, head_size);
-		
-		q_h = Tensor::transpose(q_h);
-		k_h = Tensor::transpose(k_h);
-		v_h = Tensor::transpose(v_h);
-	}
-
-	void Transformers()
-	{
-		for (int epochs = 0; epochs < train; ++epochs)
+		for(int i = 0; i < num_seq; i+=batch_size)
 		{
-			int ct = 0;
-			float total_loss = 0.0f;
-			cout << "Epochs : " << epochs + 1 << " -> ";
-			for (int batch = 0; batch < num_seq; batch+=batch_size)
-			{
-				vector<vector<vector<float>>> X;
-				X.reserve(batch_size);
-				for (int seq = batch; seq < batch_size + batch; ++seq)
-				{
-					vector<vector<float>> temp;
-					temp.reserve(seq_len);
-					for (int i = 0; i < seq_len; ++i) temp.push_back(Tensor::matadd(embed_mat[TX[seq][i]], pos_mat[i]));
-					X.push_back(temp);
-				}
-
-				vector<vector<vector<float>>> X_input;
-
-				vector<vector<vector<vector<float>>>> l1_X;
-				vector<vector<vector<vector<float>>>> l1_X_STD;
-				vector<vector<vector<float>>> l1_mean;
-				vector<vector<vector<float>>> l1_var;
-				vector<vector<vector<float>>> l1_std;
-
-				vector<vector<vector<vector<float>>>> l2_X;
-				vector<vector<vector<vector<float>>>> l2_X_STD;
-				vector<vector<vector<float>>> l2_mean;
-				vector<vector<vector<float>>> l2_var;
-				vector<vector<vector<float>>> l2_std;
-
-				vector<vector<vector<float>>> final_X;
-				vector<vector<vector<float>>> final_X_STD;
-				vector<vector<float>> final_mean;
-				vector<vector<float>> final_var;
-				vector<vector<float>> final_std;
-
-				vector<vector<vector<vector<float>>>> QKV_input;
-				vector<vector<vector<vector<float>>>> Q_cache;
-				vector<vector<vector<vector<float>>>> K_cache;
-				vector<vector<vector<vector<float>>>> V_cache;
-				vector<vector<vector<vector<vector<float>>>>> Q_cache_H;
-				vector<vector<vector<vector<vector<float>>>>> K_cache_H;
-				vector<vector<vector<vector<vector<float>>>>> V_cache_H;
-
-				vector<vector<vector<vector<vector<float>>>>> attension_score;
-				vector<vector<vector<vector<vector<float>>>>> scaled_score;
-				vector<vector<vector<vector<vector<float>>>>> masked_score;
-				vector<vector<vector<vector<vector<float>>>>> attension_prob;
-				vector<vector<vector<vector<vector<float>>>>> attension_out;
-				vector<vector<vector<vector<float>>>> merged_heads;
-				vector<vector<vector<vector<float>>>> attension_projected;
-				vector<vector<vector<vector<float>>>> attension_mask;
-				vector<vector<vector<vector<float>>>> attension_residual;
-
-				vector<vector<vector<vector<float>>>> gelu_input;
-				vector<vector<vector<vector<float>>>> gelu_output;
-				vector<vector<vector<vector<float>>>> mlp_mask;
-
-				vector<vector<vector<vector<float>>>> linear1_input;
-				vector<vector<vector<vector<float>>>> linear1_output;
-
-				vector<vector<vector<vector<float>>>> linear2_input;
-				vector<vector<vector<vector<float>>>> linear2_output;
-
-				vector<vector<vector<vector<float>>>> mlp_residual;
-
-				vector<vector<vector<float>>> logits;
-
-				vector<vector<vector<float>>> softmax_probs;
-
-				vector<vector<vector<float>>> d_logits;
-				vector<vector<vector<float>>> hidden_states;
-
-				vector<vector<long long>> target_ids;
-
-				vector<vector<vector<float>>> input_dropout_mask;
-
-				X_input.reserve(batch_size);			
-
-				l1_X.reserve(batch_size);
-				l1_X_STD.reserve(batch_size);
-				l1_mean.reserve(batch_size);
-				l1_var.reserve(batch_size);
-				l1_std.reserve(batch_size);
-
-				l2_X.reserve(batch_size);
-				l2_X_STD.reserve(batch_size);
-				l2_mean.reserve(batch_size);
-				l2_var.reserve(batch_size);
-				l2_std.reserve(batch_size);
-
-				final_X.reserve(batch_size);
-				final_X_STD.reserve(batch_size);
-				final_mean.reserve(batch_size);
-				final_var.reserve(batch_size);
-				final_std.reserve(batch_size);
-					
-				QKV_input.reserve(batch_size);
-				Q_cache.reserve(batch_size);
-				K_cache.reserve(batch_size);
-				V_cache.reserve(batch_size);
-				Q_cache_H.reserve(batch_size);
-				K_cache_H.reserve(batch_size);
-				V_cache_H.reserve(batch_size);
-
-				attension_score.reserve(batch_size);
-				scaled_score.reserve(batch_size);
-				masked_score.reserve(batch_size);
-				attension_prob.reserve(batch_size);
-				attension_out.reserve(batch_size);
-				merged_heads.reserve(batch_size);
-				attension_projected.reserve(batch_size);
-				attension_mask.reserve(batch_size);
-				attension_residual.reserve(batch_size);
-
-				gelu_input.reserve(batch_size);
-				gelu_output.reserve(batch_size);
-				mlp_mask.reserve(batch_size);
-
-				linear1_input.reserve(batch_size);
-				linear1_output.reserve(batch_size);
-
-				linear2_input.reserve(batch_size);
-				linear2_output.reserve(batch_size);
-
-				mlp_residual.reserve(batch_size);
-				
-				logits.reserve(batch_size);
-
-				softmax_probs.reserve(batch_size);
-
-				d_logits.reserve(batch_size);
-				hidden_states.reserve(batch_size);
-
-				target_ids.reserve(batch_size);
-				
-				input_dropout_mask.reserve(batch_size);
-
-				float loss = 0.0f;
-				
-				for (int seq = 0; seq < batch_size; ++seq)
-				{
-
-					vector<vector<vector<float>>> t_l1_X;
-					vector<vector<vector<float>>> t_l1_X_STD;
-					vector<vector<float>> t_l1_mean;
-					vector<vector<float>> t_l1_var;
-					vector<vector<float>> t_l1_std;
-
-					vector<vector<vector<float>>> t_l2_X;
-					vector<vector<vector<float>>> t_l2_X_STD;
-					vector<vector<float>> t_l2_mean;
-					vector<vector<float>> t_l2_var;
-					vector<vector<float>> t_l2_std;
-
-					vector<vector<vector<float>>> t_QKV_input;
-					vector<vector<vector<float>>> t_Q_cache;
-					vector<vector<vector<float>>> t_K_cache;
-					vector<vector<vector<float>>> t_V_cache;
-					vector<vector<vector<vector<float>>>> t_Q_cache_H;
-					vector<vector<vector<vector<float>>>> t_K_cache_H;
-					vector<vector<vector<vector<float>>>> t_V_cache_H;
-					
-					vector<vector<vector<vector<float>>>> t_attension_score;
-					vector<vector<vector<vector<float>>>> t_scaled_score;
-					vector<vector<vector<vector<float>>>> t_masked_score;
-					vector<vector<vector<vector<float>>>> t_attension_prob;
-					vector<vector<vector<vector<float>>>> t_attension_out;
-					vector<vector<vector<float>>> t_merged_heads;
-					vector<vector<vector<float>>> t_attension_projected;
-					vector<vector<vector<float>>> t_attension_mask;
-					vector<vector<vector<float>>> t_attension_residual;
-
-					vector<vector<vector<float>>> t_gelu_input;
-					vector<vector<vector<float>>> t_gelu_output;
-					vector<vector<vector<float>>> t_mlp_mask;
-
-					vector<vector<vector<float>>> t_linear1_input;
-					vector<vector<vector<float>>> t_linear1_output;
-
-					vector<vector<vector<float>>> t_linear2_input;
-					vector<vector<vector<float>>> t_linear2_output;
-
-					vector<vector<vector<float>>> t_mlp_residual;
-
-					t_l1_X.reserve(block_size);
-					t_l1_X_STD.reserve(block_size);
-					t_l1_mean.reserve(block_size);
-					t_l1_var.reserve(block_size);
-					t_l1_std.reserve(block_size);
-
-					t_l2_X.reserve(block_size);
-					t_l2_X_STD.reserve(block_size);
-					t_l2_mean.reserve(block_size);
-					t_l2_var.reserve(block_size);
-					t_l2_std.reserve(block_size);
-				
-					t_QKV_input.reserve(block_size);
-					t_Q_cache.reserve(block_size);
-					t_K_cache.reserve(block_size);
-					t_V_cache.reserve(block_size);
-					t_Q_cache_H.reserve(block_size);
-					t_K_cache_H.reserve(block_size);
-					t_V_cache_H.reserve(block_size);
-
-					t_attension_score.reserve(block_size);
-					t_scaled_score.reserve(block_size);
-					t_masked_score.reserve(block_size);
-					t_attension_prob.reserve(block_size);
-					t_attension_out.reserve(block_size);
-					t_merged_heads.reserve(block_size);
-					t_attension_projected.reserve(block_size);
-					t_attension_mask.reserve(block_size);
-					t_attension_residual.reserve(block_size);
-
-					t_gelu_input.reserve(block_size);
-					t_gelu_output.reserve(block_size);
-					t_mlp_mask.reserve(block_size);
-
-					t_linear1_input.reserve(block_size);
-					t_linear1_output.reserve(block_size);
-
-					t_linear2_input.reserve(block_size);
-					t_linear2_output.reserve(block_size);
-
-					t_mlp_residual.reserve(block_size);
-
-					auto dropout_mask = Tensor::dropout_mask(seq_len, embed_size, dropout_rate);
-					input_dropout_mask.push_back(dropout_mask);
-					auto X_input2 = Tensor::dropout(X[seq], dropout_mask, dropout_prob);	
-
-					for (int i = 0; i < block_size; ++i)
-					{
-						auto residual = X_input2;
-						
-						t_l1_X.push_back(X_input2);
-						
-						vector<vector<float>> t2_l1_X_STD;
-						vector<float> t2_l1_mean;
-						vector<float> t2_l1_var;
-						vector<float> t2_l1_std;
-						
-						t2_l1_X_STD.reserve(seq_len);
-						t2_l1_mean.reserve(seq_len);
-						t2_l1_var.reserve(seq_len);
-						t2_l1_std.reserve(seq_len);
-
-						Tensor::layer_norm(X_input2, gamma1[i], beta1[i], t2_l1_mean, t2_l1_var, t2_l1_std, t2_l1_X_STD);
-
-						t_l1_mean.push_back(t2_l1_mean);
-						t_l1_var.push_back(t2_l1_var);
-						t_l1_std.push_back(t2_l1_std);
-						t_l1_X_STD.push_back(t2_l1_X_STD);
-
-						t_QKV_input.push_back(X_input2);
-						
-						linear_projection(X_input2, i);
-
-						t_Q_cache.push_back(q);
-						t_K_cache.push_back(k);
-						t_V_cache.push_back(v);
-						
-						t_Q_cache_H.push_back(q_h);
-						t_K_cache_H.push_back(k_h);
-						t_V_cache_H.push_back(v_h);
-												
-						vector<vector<vector<float>>> t2_attension_score;
-						vector<vector<vector<float>>> t2_scaled_score;
-						vector<vector<vector<float>>> t2_masked_score;
-						vector<vector<vector<float>>> t2_attension_prob;
-						vector<vector<vector<float>>> t2_attension_out;
-						vector<vector<float>> t2_merged_heads;
-						
-						t2_attension_score.reserve(head_size);
-						t2_scaled_score.reserve(head_size);
-						t2_masked_score.reserve(head_size);
-						t2_attension_prob.reserve(head_size);
-						t2_attension_out.reserve(head_size);
-						t2_merged_heads.reserve(head_size);
-
-						auto attension = Attension::score(q_h, k_h, v_h, wo[i], t2_attension_score, t2_scaled_score, 
-															t2_masked_score, t2_attension_prob, t2_attension_out, t2_merged_heads);
-
-						t_attension_score.push_back(t2_attension_score);
-						t_scaled_score.push_back(t2_scaled_score);
-						t_masked_score.push_back(t2_masked_score);
-						t_attension_prob.push_back(t2_attension_prob);
-						t_attension_out.push_back(t2_attension_out);
-						t_merged_heads.push_back(t2_merged_heads);
-						t_attension_projected.push_back(attension);
-
-						dropout_mask = Tensor::dropout_mask(seq_len, embed_size, dropout_rate);
-						t_attension_mask.push_back(dropout_mask);
-						X_input2 = Tensor::dropout(attension, dropout_mask, dropout_prob);
-
-						t_attension_residual.push_back(residual);
-						X_input2 = Tensor::matadd(residual, X_input2);
-						
-						residual = X_input2;
-						t_mlp_residual.push_back(residual);
-
-						t_l2_X.push_back(X_input2);
-						
-						vector<vector<float>> t2_l2_X_STD;
-						vector<float> t2_l2_mean;
-						vector<float> t2_l2_var;
-						vector<float> t2_l2_std;
-						
-						t2_l2_X_STD.reserve(seq_len);
-						t2_l2_mean.reserve(seq_len);
-						t2_l2_var.reserve(seq_len);
-						t2_l2_std.reserve(seq_len);
-
-						Tensor::layer_norm(X_input2, gamma2[i], beta2[i], t2_l2_mean, t2_l2_var, t2_l2_std, t2_l2_X_STD);
-						
-						t_l2_mean.push_back(t2_l2_mean);
-						t_l2_var.push_back(t2_l2_var);
-						t_l2_std.push_back(t2_l2_std);
-						t_l2_X_STD.push_back(t2_l2_X_STD);
-
-						t_linear1_input.push_back(X_input2);
-						X_input2 = Tensor::dot_product(X_input2, w1[i]);
-						t_linear1_output.push_back(X_input2);
-
-						t_gelu_input.push_back(X_input2);
-						Function::gelu(X_input2);
-						t_gelu_output.push_back(X_input2);
-
-						t_linear2_input.push_back(X_input2);
-						X_input2 = Tensor::dot_product(X_input2, w2[i]);
-						t_linear2_output.push_back(X_input2);
-
-						dropout_mask = Tensor::dropout_mask(seq_len, embed_size, dropout_rate);
-						t_mlp_mask.push_back(dropout_mask);
-						X_input2 = Tensor::dropout(X_input2, dropout_mask, dropout_prob);
-						
-						X_input2 = Tensor::matadd(residual, X_input2);
-					}
-					
-					l1_X.push_back(t_l1_X);
-					l1_mean.push_back(t_l1_mean);
-					l1_var.push_back(t_l1_var);
-					l1_std.push_back(t_l1_std);
-					l1_X_STD.push_back(t_l1_X_STD);
-
-					l2_X.push_back(t_l2_X);
-					l2_mean.push_back(t_l2_mean);
-					l2_var.push_back(t_l2_var);
-					l2_std.push_back(t_l2_std);
-					l2_X_STD.push_back(t_l2_X_STD);
-
-					QKV_input.push_back(t_QKV_input);
-					Q_cache.push_back(t_Q_cache);
-					K_cache.push_back(t_K_cache);
-					V_cache.push_back(t_V_cache);
-
-					Q_cache_H.push_back(t_Q_cache_H);
-					K_cache_H.push_back(t_K_cache_H);
-					V_cache_H.push_back(t_V_cache_H);
-
-					attension_score.push_back(t_attension_score);
-					scaled_score.push_back(t_scaled_score);
-					masked_score.push_back(t_masked_score);
-					attension_prob.push_back(t_attension_prob);
-					attension_out.push_back(t_attension_out);
-					merged_heads.push_back(t_merged_heads);
-					attension_projected.push_back(t_attension_projected);
-					attension_mask.push_back(t_attension_mask);
-					attension_residual.push_back(t_attension_residual);
-
-					mlp_residual.push_back(t_mlp_residual);
-					
-					gelu_input.push_back(t_gelu_input);
-					gelu_output.push_back(t_gelu_output);
-					mlp_mask.push_back(t_mlp_mask);
-
-					linear1_input.push_back(t_linear1_input);
-					linear1_output.push_back(t_linear1_output);
-
-					linear2_input.push_back(t_linear2_input);
-					linear2_output.push_back(t_linear2_output);
-		
-					vector<vector<float>> t2_final_X_STD;
-					vector<float> t2_final_mean;
-					vector<float> t2_final_var;
-					vector<float> t2_final_std;
-
-					final_X.push_back(X_input2);
-					Tensor::layer_norm(X_input2, final_gamma, final_beta, t2_final_mean, t2_final_var, t2_final_std, t2_final_X_STD);
-					
-					final_mean.push_back(t2_final_mean);
-					final_var.push_back(t2_final_var);
-					final_std.push_back(t2_final_std);
-					final_X_STD.push_back(t2_final_X_STD);
-
-					hidden_states.push_back(X_input2);
-					X_input2 = Tensor::dot_product(X_input2, w_vocab);
-					logits.push_back(X_input2);
-
-					Function::softmax(X_input2);
-					softmax_probs.push_back(X_input2);
-
-					for (int lss = 0; lss < seq_len; ++lss)
-					{
-						float p = std::max(X_input2[lss][Y[batch + seq][lss]], 1e-9f);
-						loss += -log(p);
-					}
-					X_input.push_back(X_input2);
-
-					vector<vector<float>> gradient;
-					vector<long long> t_target_ids;
-					gradient.reserve(seq_len);
-					t_target_ids.reserve(seq_len);
-					float scale_grad = 1.0f / ((float)batch_size * seq_len);
-					for (int lss = 0; lss < seq_len; ++lss)
-					{
-						X_input2[lss][Y[batch + seq][lss]] -= 1.0f;
-						for (int v = 0; v < vocab_size; ++v) X_input2[lss][v] *= scale_grad;
-						t_target_ids.push_back(Y[batch + seq][lss]);
-						gradient.push_back(X_input2[lss]);
-					}
-					d_logits.push_back(gradient);
-					target_ids.push_back(t_target_ids);
-				}
-				loss = (loss / (batch_size * seq_len));
-				total_loss += loss;
-
-				vector<vector<float>> dw_vocab(embed_size, vector<float>(vocab_size, 0.0f));
-				vector<vector<vector<float>>> dh;
-				
-				auto embed_mat_t2 = Tensor::transpose(w_vocab);
-				
-				dh.reserve(batch_size);
-				
-				for (int gra = 0; gra < batch_size; ++gra)
-				{
-					auto h_t = Tensor::transpose(hidden_states[gra]);
-					auto sum = Tensor::dot_product(h_t, d_logits[gra]);
-					dw_vocab = Tensor::matadd(dw_vocab, sum);
-
-					dh.push_back(Tensor::dot_product(d_logits[gra], embed_mat_t2));
-				}
-
-				auto dg = Tensor::matmul_e(dh, final_X_STD);
-				auto dfinal_gamma = Tensor::sum(dg);
-				auto dfinal_beta = Tensor::sum(dh);
-				auto dx_hat = Tensor::normalized_gradient(dh, final_gamma);
-				auto dvar = Tensor::variance_gradient(dx_hat, final_X, final_mean, final_var);
-				auto dmean = Tensor::mean_gradient(dx_hat, final_X_STD, dvar, final_std);
-				auto dx = Tensor::input_gradient(dx_hat, final_X_STD, dvar, dmean, final_std);
-
-				vector<vector<vector<float>>> dw2(block_size, vector<vector<float>> (hidden_size, vector<float>(embed_size, 0.0f)));
-				vector<vector<vector<float>>> dw1(block_size, vector<vector<float>> (embed_size, vector<float>(hidden_size, 0.0f)));
-				vector<vector<float>> dgamma2(block_size, vector<float>(embed_size, 0.0f));
-				vector<vector<float>> dbeta2(block_size, vector<float>(embed_size, 0.0f));
-				vector<vector<float>> dgamma1(block_size, vector<float>(embed_size, 0.0f));
-				vector<vector<float>> dbeta1(block_size, vector<float>(embed_size, 0.0f));
-
-				vector<vector<vector<float>>> dwo(block_size, vector<vector<float>> (embed_size, vector<float>(embed_size, 0.0f)));
-				vector<vector<vector<float>>> dwq(block_size, vector<vector<float>> (embed_size, vector<float>(embed_size, 0.0f)));
-				vector<vector<vector<float>>> dwk(block_size, vector<vector<float>> (embed_size, vector<float>(embed_size, 0.0f)));
-				vector<vector<vector<float>>> dwv(block_size, vector<vector<float>> (embed_size, vector<float>(embed_size, 0.0f)));
-				vector<vector<float>> dembed_mat(vocab_size, vector<float>(embed_size, 0.0f));
-				vector<vector<float>> dpos_mat(seq_len, vector<float>(embed_size, 0.0f));
-
-				for (int back_batch = 0; back_batch < batch_size; ++back_batch)
-				{
-					auto d_mlp_residual = dx[back_batch];
-					auto dmlp = dx[back_batch];
-
-					for (int back_block = block_size - 1; back_block >= 0; back_block--)
-					{
-						dmlp = Tensor::dropout(dmlp, mlp_mask[back_batch][back_block], dropout_prob);
-						
-						auto gelu_output_t = Tensor::transpose(gelu_output[back_batch][back_block]);
-						auto sum = Tensor::dot_product(gelu_output_t, dmlp);
-						dw2[back_block] = Tensor::matadd(dw2[back_block], sum);
-
-						auto t_w2 = Tensor::transpose(w2[back_block]);
-						auto dgelu = Tensor::dot_product(dmlp, t_w2);
-
-						auto gelu_d = gelu_input[back_batch][back_block];
-						Function::gelu_derivative(gelu_d);
-						auto dlinear1 = Tensor::elementwise_mul(dgelu, gelu_d);
-
-						auto l2_X_STD_t = Tensor::transpose(l2_X_STD[back_batch][back_block]);
-						sum = Tensor::dot_product(l2_X_STD_t, dlinear1);
-						dw1[back_block] = Tensor::matadd(dw1[back_block], sum);
-
-						auto t_w1 = Tensor::transpose(w1[back_block]);
-						auto dln2 = Tensor::dot_product(dlinear1, t_w1);
-						
-						sum = Tensor::elementwise_mul(dln2, l2_X_STD[back_batch][back_block]);
-						auto sum1 = Tensor::sum(sum);
-						dgamma2[back_block] = Tensor::matadd(dgamma2[back_block],sum1);
-						sum1 = Tensor::sum(dln2);
-						dbeta2[back_block] = Tensor::matadd(dbeta2[back_block], sum1);
-
-						auto dxhat = Tensor::elementwise_mul(dln2, gamma2[back_block]);
-						vector<vector<float>> dattension_out(seq_len, vector<float>(embed_size, 0.0f));
-
-						for (int tokens = 0; tokens < seq_len; ++tokens)
-						{
-							float sum_dxhat = 0.0f;
-							float sum_dxhat_xhat = 0.0f;
-							for (int e = 0; e < embed_size; ++e)
-							{
-								sum_dxhat += dxhat[tokens][e];
-								sum_dxhat_xhat += (dxhat[tokens][e] * l2_X_STD[back_batch][back_block][tokens][e]);
-							}
-							for (int e = 0; e < embed_size; ++e)
-							{
-								dattension_out[tokens][e] = (l2_std[back_batch][back_block][tokens]
-									/ (float)embed_size) * ((float)embed_size * dxhat[tokens][e] - sum_dxhat - l2_X_STD[back_batch][back_block][tokens][e] * sum_dxhat_xhat);
-							}
-						}
-						dattension_out = Tensor::matadd(dattension_out, d_mlp_residual);
-						auto dResidual_Attn = dattension_out;
-						auto dattension = dattension_out;
-
-						dattension = Tensor::dropout(dattension, attension_mask[back_batch][back_block], dropout_prob);
-						auto merged_heads_t = Tensor::transpose(merged_heads[back_batch][back_block]);
-						sum = Tensor::dot_product(merged_heads_t, dattension);
-						dwo[back_block] = Tensor::matadd(dwo[back_block], sum);
-
-						auto wo_t = Tensor::transpose(wo[back_block]);
-						auto dmerge = Tensor::dot_product(dattension, wo_t);
-						auto dAttentionOutput = Tensor::split_heads(dmerge, head_size);
-
-						vector<vector<vector<float>>> dv;
-						dv.reserve(head_size);
-						for (int head = 0; head < head_size; ++head)
-						{
-							auto attension_prob_t = Tensor::transpose(attension_prob[back_batch][back_block][head]);
-							dv.push_back(Tensor::dot_product(attension_prob_t, dAttentionOutput[head]));
-						}
-
-						vector<vector<vector<float>>> dAttention_probs;
-						dAttention_probs.reserve(head_size);
-
-						for (int head = 0; head < head_size; ++head)
-						{
-							auto v_t = Tensor::transpose(V_cache_H[back_batch][back_block][head]);
-							dAttention_probs.push_back(Tensor::dot_product(dAttentionOutput[head], v_t));
-						}
-
-						vector<vector<vector<float>>> dscores;
-						dscores.reserve(head_size);
-
-						int querys = dAttention_probs[0].size();
-						int keys = dAttention_probs[0][0].size();
-						for (int head = 0; head < head_size; ++head)
-						{
-							vector<vector<float>> t_dscores;
-							t_dscores.reserve(seq_len);
-							for (int query_tokens = 0; query_tokens < querys; ++query_tokens)
-							{
-								float dot = 0.0f;
-								for (int key = 0; key < keys; ++key) dot += attension_prob[back_batch][back_block][head][query_tokens][key] * dAttention_probs[head][query_tokens][key];
-
-								vector<float> t2_dscores;
-								t2_dscores.reserve(keys);
-								for (int key = 0; key < keys; ++key) t2_dscores.push_back(attension_prob[back_batch][back_block][head][query_tokens][key] * (dAttention_probs[head][query_tokens][key] - dot));
-								t_dscores.push_back(t2_dscores);
-							}
-							dscores.push_back(t_dscores);
-						}
-						
-						auto dqk_scores = dscores;
-						for (int head = 0; head < head_size; ++head) for (int query_tokens = 0; query_tokens < querys; ++query_tokens) for (int key = 0; key < keys; ++key) dqk_scores[head][query_tokens][key] /= scale;
-
-						vector<vector<vector<float>>> dq;
-						vector<vector<vector<float>>> dk;
-						dq.reserve(head_size);
-						dk.reserve(head_size);
-						for (int head = 0; head < head_size; ++head)
-						{
-							dq.push_back(Tensor::dot_product(dqk_scores[head], K_cache_H[back_batch][back_block][head]));
-							auto dqk_scores_t = Tensor::transpose(dqk_scores[head]);
-							dk.push_back(Tensor::dot_product(dqk_scores_t, Q_cache_H[back_batch][back_block][head]));
-						}
-
-						auto dq_merge = Tensor::merge_heads(dq);
-						auto dk_merge = Tensor::merge_heads(dk);
-						auto dv_merge = Tensor::merge_heads(dv);
-
-						auto l1_X_STD_t = Tensor::transpose(l1_X_STD[back_batch][back_block]);
-						sum = Tensor::dot_product(l1_X_STD_t, dq_merge);
-						dwq[back_block] = Tensor::matadd(dwq[back_block], sum);
-
-						sum = Tensor::dot_product(l1_X_STD_t, dk_merge);
-						dwk[back_block] = Tensor::matadd(dwk[back_block], sum);
-
-						sum = Tensor::dot_product(l1_X_STD_t, dv_merge);
-						dwv[back_block] = Tensor::matadd(dwv[back_block], sum);
-
-						auto wq_t = Tensor::transpose(wq[back_block]);
-						auto dxq = Tensor::dot_product(dq_merge, wq_t);
-
-						auto wk_t = Tensor::transpose(wk[back_block]);
-						auto dxk = Tensor::dot_product(dk_merge, wk_t);
-
-						auto wv_t = Tensor::transpose(wv[back_block]);
-						auto dxv = Tensor::dot_product(dv_merge, wv_t);
-
-						sum = Tensor::matadd(dxq, dxk);
-						auto dln1 = Tensor::matadd(sum, dxv);
-
-						sum = Tensor::elementwise_mul(dln1, l1_X_STD[back_batch][back_block]);
-						sum1 = Tensor::sum(sum);
-						dgamma1[back_block] = Tensor::matadd(dgamma1[back_block],sum1);
-						sum1 = Tensor::sum(dln1);
-						dbeta1[back_block] = Tensor::matadd(dbeta1[back_block], sum1);
-
-						dxhat = Tensor::elementwise_mul(dln1, gamma1[back_block]);
-						vector<vector<float>> dBlockInput(seq_len, vector<float>(embed_size, 0.0f));
-
-						for (int tokens = 0; tokens < seq_len; ++tokens)
-						{
-							float sum_dxhat = 0.0f;
-							float sum_dxhat_xhat = 0.0f;
-							for (int e = 0; e < embed_size; ++e)
-							{
-								sum_dxhat += dxhat[tokens][e];
-								sum_dxhat_xhat += (dxhat[tokens][e] * l1_X_STD[back_batch][back_block][tokens][e]);
-							}
-							for (int e = 0; e < embed_size; ++e)
-							{
-								dBlockInput[tokens][e] = (l1_std[back_batch][back_block][tokens]
-									/ (float)embed_size) * ((float)embed_size * dxhat[tokens][e] - sum_dxhat - l1_X_STD[back_batch][back_block][tokens][e] * sum_dxhat_xhat);
-							}
-						}
-						dBlockInput = Tensor::matadd(dBlockInput, dResidual_Attn);
-						d_mlp_residual = dBlockInput;
-						dmlp = dBlockInput;
-						break;						
-					}
-					auto dinput = Tensor::dropout(dmlp, input_dropout_mask[back_batch], dropout_prob);
-					Tensor::embed_pos_backward(dinput, dembed_mat, dpos_mat, TX[batch + back_batch]);
-				}
-				Tensor::SGD(embed_mat, dembed_mat, learning_rate);
-				Tensor::SGD(pos_mat, dpos_mat, learning_rate);
-				Tensor::SGD(wq, dwq, learning_rate);
-				Tensor::SGD(wk, dwk, learning_rate);
-				Tensor::SGD(wv, dwv, learning_rate);
-				Tensor::SGD(wo, dwo, learning_rate);
-				Tensor::SGD(w1, dw1, learning_rate);
-				Tensor::SGD(w2, dw2, learning_rate);
-				Tensor::SGD(w_vocab, dw_vocab, learning_rate);
-				Tensor::SGD(gamma1, dgamma1, learning_rate);
-				Tensor::SGD(beta1, dbeta1, learning_rate);
-				Tensor::SGD(gamma2, dgamma2, learning_rate);
-				Tensor::SGD(beta2, dbeta2, learning_rate);
-				Tensor::SGD(final_gamma, dfinal_gamma, learning_rate);
-				Tensor::SGD(final_beta, dfinal_beta, learning_rate);
-			}
-			cout << "Total Loss : " << total_loss / batch_size << endl;
+			size_t current_batch_size = num_seq < i + batch_size ?  (num_seq - i) : batch_size;
+			long long* token_X = Tensor::flatten(x, i, current_batch_size, seq_len);
+			float* X = Tensor::prepare_x(token_X, embed_mat, pos_mat, current_batch_size, seq_len, embed_size);
+			cudaFree(token_X);
+			cudaFree(X);
 		}
-	}	
+	}
 };
 
 #endif

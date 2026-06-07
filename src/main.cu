@@ -2,7 +2,7 @@
 #include <string>
 #include <vector>
 #include "./include/BPE.hpp"
-#include "./include/Transformer2.cuh"
+#include "./include/Transformer.cuh"
 
 using namespace std;
 
