@@ -190,12 +190,14 @@ public:
 		{
 			int ct = 0;
 			float total_loss = 0.0f;
+			size_t current_batch_size;
 			cout << "Epochs : " << epochs + 1 << " -> ";
 			for (int batch = 0; batch < num_seq; batch+=batch_size)
 			{
+				current_batch_size = num_seq < batch + batch_size ?  (num_seq - batch) : batch_size;
 				vector<vector<vector<float>>> X;
-				X.reserve(batch_size);
-				for (int seq = batch; seq < batch_size + batch; ++seq)
+				X.reserve(current_batch_size);
+				for (int seq = batch; seq < current_batch_size + batch; ++seq)
 				{
 					vector<vector<float>> temp;
 					temp.reserve(seq_len);
@@ -264,70 +266,69 @@ public:
 
 				vector<vector<vector<float>>> input_dropout_mask;
 
-				X_input.reserve(batch_size);			
+				X_input.reserve(current_batch_size);			
 
-				l1_X.reserve(batch_size);
-				l1_X_STD.reserve(batch_size);
-				l1_mean.reserve(batch_size);
-				l1_var.reserve(batch_size);
-				l1_std.reserve(batch_size);
+				l1_X.reserve(current_batch_size);
+				l1_X_STD.reserve(current_batch_size);
+				l1_mean.reserve(current_batch_size);
+				l1_var.reserve(current_batch_size);
+				l1_std.reserve(current_batch_size);
 
-				l2_X.reserve(batch_size);
-				l2_X_STD.reserve(batch_size);
-				l2_mean.reserve(batch_size);
-				l2_var.reserve(batch_size);
-				l2_std.reserve(batch_size);
+				l2_X.reserve(current_batch_size);
+				l2_X_STD.reserve(current_batch_size);
+				l2_mean.reserve(current_batch_size);
+				l2_var.reserve(current_batch_size);
+				l2_std.reserve(current_batch_size);
 
-				final_X.reserve(batch_size);
-				final_X_STD.reserve(batch_size);
-				final_mean.reserve(batch_size);
-				final_var.reserve(batch_size);
-				final_std.reserve(batch_size);
+				final_X.reserve(current_batch_size);
+				final_X_STD.reserve(current_batch_size);
+				final_mean.reserve(current_batch_size);
+				final_var.reserve(current_batch_size);
+				final_std.reserve(current_batch_size);
 					
-				QKV_input.reserve(batch_size);
-				Q_cache.reserve(batch_size);
-				K_cache.reserve(batch_size);
-				V_cache.reserve(batch_size);
-				Q_cache_H.reserve(batch_size);
-				K_cache_H.reserve(batch_size);
-				V_cache_H.reserve(batch_size);
+				QKV_input.reserve(current_batch_size);
+				Q_cache.reserve(current_batch_size);
+				K_cache.reserve(current_batch_size);
+				V_cache.reserve(current_batch_size);
+				Q_cache_H.reserve(current_batch_size);
+				K_cache_H.reserve(current_batch_size);
+				V_cache_H.reserve(current_batch_size);
 
-				attension_score.reserve(batch_size);
-				scaled_score.reserve(batch_size);
-				masked_score.reserve(batch_size);
-				attension_prob.reserve(batch_size);
-				attension_out.reserve(batch_size);
-				merged_heads.reserve(batch_size);
-				attension_projected.reserve(batch_size);
-				attension_mask.reserve(batch_size);
-				attension_residual.reserve(batch_size);
+				attension_score.reserve(current_batch_size);
+				scaled_score.reserve(current_batch_size);
+				masked_score.reserve(current_batch_size);
+				attension_prob.reserve(current_batch_size);
+				attension_out.reserve(current_batch_size);
+				merged_heads.reserve(current_batch_size);
+				attension_projected.reserve(current_batch_size);
+				attension_mask.reserve(current_batch_size);
+				attension_residual.reserve(current_batch_size);
 
-				gelu_input.reserve(batch_size);
-				gelu_output.reserve(batch_size);
-				mlp_mask.reserve(batch_size);
+				gelu_input.reserve(current_batch_size);
+				gelu_output.reserve(current_batch_size);
+				mlp_mask.reserve(current_batch_size);
 
-				linear1_input.reserve(batch_size);
-				linear1_output.reserve(batch_size);
+				linear1_input.reserve(current_batch_size);
+				linear1_output.reserve(current_batch_size);
 
-				linear2_input.reserve(batch_size);
-				linear2_output.reserve(batch_size);
+				linear2_input.reserve(current_batch_size);
+				linear2_output.reserve(current_batch_size);
 
-				mlp_residual.reserve(batch_size);
+				mlp_residual.reserve(current_batch_size);
 				
-				logits.reserve(batch_size);
+				logits.reserve(current_batch_size);
 
-				softmax_probs.reserve(batch_size);
+				softmax_probs.reserve(current_batch_size);
 
-				d_logits.reserve(batch_size);
-				hidden_states.reserve(batch_size);
+				d_logits.reserve(current_batch_size);
+				hidden_states.reserve(current_batch_size);
 
-				target_ids.reserve(batch_size);
+				target_ids.reserve(current_batch_size);
 				
-				input_dropout_mask.reserve(batch_size);
+				input_dropout_mask.reserve(current_batch_size);
 
 				float loss = 0.0f;
-				
-				for (int seq = 0; seq < batch_size; ++seq)
+				for (int seq = 0; seq < current_batch_size; ++seq)
 				{
 
 					vector<vector<vector<float>>> t_l1_X;
@@ -600,7 +601,7 @@ public:
 					vector<long long> t_target_ids;
 					gradient.reserve(seq_len);
 					t_target_ids.reserve(seq_len);
-					float scale_grad = 1.0f / ((float)batch_size * seq_len);
+					float scale_grad = 1.0f / ((float)current_batch_size * seq_len);
 					for (int lss = 0; lss < seq_len; ++lss)
 					{
 						X_input2[lss][Y[batch + seq][lss]] -= 1.0f;
@@ -611,7 +612,7 @@ public:
 					d_logits.push_back(gradient);
 					target_ids.push_back(t_target_ids);
 				}
-				loss = (loss / (batch_size * seq_len));
+				loss = (loss / (current_batch_size * seq_len));
 				total_loss += loss;
 
 				vector<vector<float>> dw_vocab(embed_size, vector<float>(vocab_size, 0.0f));
@@ -619,9 +620,9 @@ public:
 				
 				auto embed_mat_t2 = Tensor::transpose(w_vocab);
 				
-				dh.reserve(batch_size);
+				dh.reserve(current_batch_size);
 				
-				for (int gra = 0; gra < batch_size; ++gra)
+				for (int gra = 0; gra < current_batch_size; ++gra)
 				{
 					auto h_t = Tensor::transpose(hidden_states[gra]);
 					auto sum = Tensor::dot_product(h_t, d_logits[gra]);
@@ -652,7 +653,7 @@ public:
 				vector<vector<float>> dembed_mat(vocab_size, vector<float>(embed_size, 0.0f));
 				vector<vector<float>> dpos_mat(seq_len, vector<float>(embed_size, 0.0f));
 
-				for (int back_batch = 0; back_batch < batch_size; ++back_batch)
+				for (int back_batch = 0; back_batch < current_batch_size; ++back_batch)
 				{
 					auto d_mlp_residual = dx[back_batch];
 					auto dmlp = dx[back_batch];
@@ -843,7 +844,7 @@ public:
 				Tensor::SGD(final_gamma, dfinal_gamma, learning_rate);
 				Tensor::SGD(final_beta, dfinal_beta, learning_rate);
 			}
-			cout << "Total Loss : " << total_loss / batch_size << endl;
+			cout << "Total Loss : " << total_loss / current_batch_size << endl;
 		}
 	}	
 };
