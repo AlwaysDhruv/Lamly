@@ -47,6 +47,39 @@ namespace
         X[idx] =
             embed_mat[token * embed_size + c]
             + pos_mat[t * embed_size + c];
+    }
+
+    __global__ void dropout_mask_kernel(
+        float* mask,
+        int N,
+        float dropout_rate)
+    {
+        int idx =
+            blockIdx.x *
+            blockDim.x +
+            threadIdx.x;
+
+        if(idx < N)
+        {
+            curandState state;
+
+            curand_init(
+                clock64(),
+                idx,
+                0,
+                &state
+            );
+
+            float r =
+                curand_uniform(
+                    &state
+                );
+
+            mask[idx] =
+                (r > dropout_rate)
+                ? 1.0f
+                : 0.0f;
+        }
     }    
 }
 
@@ -167,6 +200,16 @@ namespace Tensor
         cudaMemcpy(token_X, batch_x.data(), bytes, cudaMemcpyHostToDevice);
         
         return token_X;
+    }
+
+    float* dropout_mask(size_t n, float rate)
+    {
+        float* mask;
+        size_t bytes = n * sizeof(float);
+        cudaMalloc(&mask, bytes);
+        dropout_mask_kernel<<< (n + 255) / 256, 256 >>>(mask, n, rate);
+
+        return mask;
     }
 }
 #endif

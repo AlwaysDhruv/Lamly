@@ -60,7 +60,7 @@ int main(int argc, char const *argv[])
 
     tr.input_embedding();
 
-    tr.prepare();
+    tr.Transformer();
     
     return 0;
 }

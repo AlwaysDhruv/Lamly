@@ -36,6 +36,8 @@ namespace Tensor
                     int batch_size, int seq_len, int embed_size);        
     
     long long* flatten(const vector<vector<long long>>& x, int i, int current_batch_size, int seq_len);
+
+    float* dropout_mask(size_t n, float rate);
 }
 
 #endif

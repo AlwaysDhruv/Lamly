@@ -174,15 +174,20 @@ public:
 		}
 	}
 
-	void prepare()
+	void Transformer()
 	{
 		for(int i = 0; i < num_seq; i+=batch_size)
 		{
 			size_t current_batch_size = num_seq < i + batch_size ?  (num_seq - i) : batch_size;
 			long long* token_X = Tensor::flatten(x, i, current_batch_size, seq_len);
 			float* X = Tensor::prepare_x(token_X, embed_mat, pos_mat, current_batch_size, seq_len, embed_size);
+			size_t size = current_batch_size * seq_len * embed_size;
+			float* mask = Tensor::dropout_mask(size, dropout_rate);
+			Tensor::display(mask);
+			cudaFree(mask);
 			cudaFree(token_X);
 			cudaFree(X);
+			break;
 		}
 	}
 };
