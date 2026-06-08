@@ -94,6 +94,74 @@ namespace
             x[idx] *= mask[idx] / probs;
         }
     }
+
+    __global__ void layernorm_kernel(
+        float *value,
+        float *gamma,
+        float *beta,
+        float *mean_out,
+        float *var_out,
+        float *std_out,
+        float *xnorm_out,
+        int batch_size,
+        int seq_len,
+        int embed_size)
+    {
+        int token_idx =
+            blockIdx.x * blockDim.x +
+            threadIdx.x;
+
+        int total_tokens =
+            batch_size * seq_len;
+
+        if(token_idx < total_tokens)
+        {
+            int offset =
+                token_idx * embed_size;
+
+            float mean = 0.0f;
+
+            for(int k = 0; k < embed_size; k++)
+                mean += value[offset + k];
+
+            mean /= embed_size;
+
+            mean_out[token_idx] = mean;
+
+            float variance = 0.0f;
+
+            for(int k = 0; k < embed_size; k++)
+            {
+                float diff =
+                    value[offset + k] - mean;
+
+                variance += diff * diff;
+            }
+
+            variance /= embed_size;
+
+            var_out[token_idx] = variance;
+
+            float std =
+                sqrtf(variance + 1e-5f);
+
+            std_out[token_idx] = std;
+
+            for(int k = 0; k < embed_size; k++)
+            {
+                float norm =
+                    (value[offset + k] - mean)
+                    / std;
+
+                xnorm_out[offset + k] =
+                    norm;
+
+                value[offset + k] =
+                    gamma[k] * norm
+                    + beta[k];
+            }
+        }
+    }    
 }
 
 namespace Tensor
@@ -231,6 +299,13 @@ namespace Tensor
         int blocks = (N + threads - 1) / threads;
 
         dropout_kernel<<<blocks, threads>>>(x, mask, probs, N);
+    }
+
+    void layer_norm(float* x, float* gamma, float* beta, float* m, float* v, float* s, float* X_norm,
+                    int batch_size, int seq_len, int embed_size)
+    {
+        int N = batch_size * seq_len;
+        layernorm_kernel<<< (N + 255)/256, 256>>>(x, gamma, beta, m, v, s, X_norm, batch_size, seq_len, embed_size);
     }
 }
 #endif

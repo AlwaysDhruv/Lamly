@@ -181,12 +181,44 @@ public:
 			size_t current_batch_size = num_seq < i + batch_size ?  (num_seq - i) : batch_size;
 			long long* token_X = Tensor::flatten(x, i, current_batch_size, seq_len);
 			float* X = Tensor::prepare_x(token_X, embed_mat, pos_mat, current_batch_size, seq_len, embed_size);
+			
 			size_t size = current_batch_size * seq_len * embed_size;
+			
 			float* input_mask = Tensor::dropout_mask(size, dropout_rate);
 			Tensor::dropout(X, input_mask, dropout_prob, size);
+
+			float* l1_X;
+			float* l1_mean;
+			float* l1_var;
+			float* l1_std;
+			float* l1_X_STD;
+			
+			cudaMalloc(&l1_X, size * sizeof(float));
+			cudaMalloc(&l1_mean, (batch_size * seq_len) * sizeof(float));
+			cudaMalloc(&l1_var, (batch_size * seq_len) * sizeof(float));
+			cudaMalloc(&l1_std, (batch_size * seq_len) * sizeof(float));
+			cudaMalloc(&l1_X_STD, size * sizeof(float));
+
+			Tensor::layer_norm(X, gamma1, beta1, l1_mean, l1_var, l1_std, l1_X_STD, batch_size, seq_len, embed_size);
+			
+			cudaMemcpy(l1_X, X, size * sizeof(float), cudaMemcpyDeviceToDevice);
+			
+			Tensor::display(l1_X, (int)size);
+			Tensor::display(l1_X_STD, (int)size);
+			size = batch_size * seq_len;
+			Tensor::display(l1_mean, (int)size);
+			Tensor::display(l1_var, (int)size);
+			Tensor::display(l1_std, (int)size);
+			
 			cudaFree(input_mask);
 			cudaFree(token_X);
 			cudaFree(X);
+			cudaFree(l1_X);
+			cudaFree(l1_mean);
+			cudaFree(l1_var);
+			cudaFree(l1_std);
+			cudaFree(l1_X_STD);
+			break;
 		}
 	}
 };

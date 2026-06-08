@@ -40,6 +40,9 @@ namespace Tensor
     float* dropout_mask(size_t n, float rate);
 
     void dropout(float* x, const float* mask, float probs, size_t N);
+
+    void layer_norm(float* x, float* gamma, float* beta, float* m, float* v, float* s, float* X_norm,
+                    int batch_size, int seq_len, int embed_size);    
 }
 
 #endif
