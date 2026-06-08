@@ -32,12 +32,14 @@ namespace Tensor
         const float* d_ptr,
         size_t n);
 
-    float* prepare_x(float* X, const long long* tokens, const float* embed_mat, const float* pos_mat,
+    float* prepare_x(const long long* tokens, const float* embed_mat, const float* pos_mat,
                     int batch_size, int seq_len, int embed_size);        
     
     long long* flatten(const vector<vector<long long>>& x, int i, int current_batch_size, int seq_len);
 
     float* dropout_mask(size_t n, float rate);
+
+    void dropout(float* x, const float* mask, float probs, size_t N);
 }
 
 #endif

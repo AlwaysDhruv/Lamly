@@ -4,6 +4,9 @@
 #include <iostream>
 #include <vector>
 #include "Tensor.cuh"
+#include <curand.h>
+#include <cuda_runtime.h>
+#include <curand_kernel.h>
 
 using namespace std;
 
@@ -80,7 +83,17 @@ namespace
                 ? 1.0f
                 : 0.0f;
         }
-    }    
+    }
+    
+    __global__ void dropout_kernel(float* x, const float* mask, float probs, size_t N)
+    {
+        int idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+        if(idx < N)
+        {
+            x[idx] *= mask[idx] / probs;
+        }
+    }
 }
 
 namespace Tensor
@@ -210,6 +223,14 @@ namespace Tensor
         dropout_mask_kernel<<< (n + 255) / 256, 256 >>>(mask, n, rate);
 
         return mask;
+    }
+
+    void dropout(float* x, const float* mask, float probs, size_t N)
+    {
+        int threads = 256;
+        int blocks = (N + threads - 1) / threads;
+
+        dropout_kernel<<<blocks, threads>>>(x, mask, probs, N);
     }
 }
 #endif
