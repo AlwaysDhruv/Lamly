@@ -305,6 +305,7 @@ namespace Tensor
                     int batch_size, int seq_len, int embed_size)
     {
         int N = batch_size * seq_len;
+
         layernorm_kernel<<< (N + 255)/256, 256>>>(x, gamma, beta, m, v, s, X_norm, batch_size, seq_len, embed_size);
     }
 }

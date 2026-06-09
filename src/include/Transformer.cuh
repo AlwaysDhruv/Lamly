@@ -176,10 +176,34 @@ public:
 
 	void Transformers()
 	{
-		for(int i = 0; i < num_seq; i+=batch_size)
+		float* l1_X;
+		float* l1_mean;
+		float* l1_var;
+		float* l1_std;
+		float* l1_X_norm;
+
+		float* l2_X;
+		float* l2_mean;
+		float* l2_var;
+		float* l2_std;
+		float* l2_X_STD;
+		
+		cudaMalloc(&l1_X, (batch_size * seq_len * embed_size * block_size) * sizeof(float));
+		cudaMalloc(&l1_mean, (batch_size * seq_len * block_size) * sizeof(float));
+		cudaMalloc(&l1_var, (batch_size * seq_len * block_size) * sizeof(float));
+		cudaMalloc(&l1_std, (batch_size * seq_len * block_size) * sizeof(float));
+		cudaMalloc(&l1_X_norm, (batch_size * seq_len * embed_size * block_size) * sizeof(float));
+	
+		cudaMalloc(&l2_X, (batch_size * seq_len * embed_size * block_size) * sizeof(float));
+		cudaMalloc(&l2_mean, (batch_size * seq_len * block_size) * sizeof(float));
+		cudaMalloc(&l2_var, (batch_size * seq_len * block_size) * sizeof(float));
+		cudaMalloc(&l2_std, (batch_size * seq_len * block_size) * sizeof(float));
+		cudaMalloc(&l2_X_STD, (batch_size * seq_len * embed_size * block_size) * sizeof(float));
+
+		for(int batch = 0; batch < num_seq; batch+=batch_size)
 		{
-			size_t current_batch_size = num_seq < i + batch_size ?  (num_seq - i) : batch_size;
-			long long* token_X = Tensor::flatten(x, i, current_batch_size, seq_len);
+			size_t current_batch_size = num_seq < batch + batch_size ?  (num_seq - batch) : batch_size;
+			long long* token_X = Tensor::flatten(x, batch, current_batch_size, seq_len);
 			float* X = Tensor::prepare_x(token_X, embed_mat, pos_mat, current_batch_size, seq_len, embed_size);
 			
 			size_t size = current_batch_size * seq_len * embed_size;
@@ -187,39 +211,25 @@ public:
 			float* input_mask = Tensor::dropout_mask(size, dropout_rate);
 			Tensor::dropout(X, input_mask, dropout_prob, size);
 
-			float* l1_X;
-			float* l1_mean;
-			float* l1_var;
-			float* l1_std;
-			float* l1_X_STD;
-			
-			cudaMalloc(&l1_X, size * sizeof(float));
-			cudaMalloc(&l1_mean, (batch_size * seq_len) * sizeof(float));
-			cudaMalloc(&l1_var, (batch_size * seq_len) * sizeof(float));
-			cudaMalloc(&l1_std, (batch_size * seq_len) * sizeof(float));
-			cudaMalloc(&l1_X_STD, size * sizeof(float));
+			for (int block = 0; block < block_size; ++block)
+			{
+				float* l1_mean_t = l1_mean + block * (batch_size * seq_len);
+				float* l1_var_t = l1_var + block * (batch_size * seq_len);
+				float* l1_std_t = l1_std + block * (batch_size * seq_len);
+				float* l1_X_norm_t = l1_X_norm + block * (batch_size * seq_len * embed_size);
+				float* gamma1_t = gamma1 + block * (block_size * embed_size);
+				float* beta1_t = beta1 + block * (block_size * embed_size);
 
-			Tensor::layer_norm(X, gamma1, beta1, l1_mean, l1_var, l1_std, l1_X_STD, batch_size, seq_len, embed_size);
-			
-			cudaMemcpy(l1_X, X, size * sizeof(float), cudaMemcpyDeviceToDevice);
-			
-			Tensor::display(l1_X, (int)size);
-			Tensor::display(l1_X_STD, (int)size);
-			size = batch_size * seq_len;
-			Tensor::display(l1_mean, (int)size);
-			Tensor::display(l1_var, (int)size);
-			Tensor::display(l1_std, (int)size);
-			
-			cudaFree(input_mask);
-			cudaFree(token_X);
-			cudaFree(X);
-			cudaFree(l1_X);
-			cudaFree(l1_mean);
-			cudaFree(l1_var);
-			cudaFree(l1_std);
-			cudaFree(l1_X_STD);
+				Tensor::layer_norm(X, gamma1_t, beta1_t, l1_mean_t, l1_var_t, l1_std_t, l1_X_norm_t, current_batch_size, seq_len, embed_size);
+				cudaMemcpy(l1_X + block * (batch_size * seq_len * embed_size), X, size * sizeof(float), cudaMemcpyDeviceToDevice);	
+			}
 			break;
 		}
+		cudaFree(l1_X);
+		cudaFree(l1_mean);
+		cudaFree(l1_var);
+		cudaFree(l1_std);
+		cudaFree(l1_X_norm);
 	}
 };
 
