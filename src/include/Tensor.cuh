@@ -41,10 +41,11 @@ namespace Tensor
 
     void dropout(float* x, const float* mask, float probs, size_t N);
 
-    void linear_projection(const float* x, const float* wq, const float* wk, const float* wv, float* q, float* k, float* v, int batch_size, int seq_len, int embed_size);
+    void linear_projection(const float* x, const float* wq, const float* wk, const float* wv,
+                            float* q, float* k, float* v, int batch_size, int seq_len, int embed_size);
 
-    void linear_projection(float* x, float* q, float* k, float* v,
-                            int batch_size, int seq_len, int embed_size);
+    void layer_norm(float* x, const float* gamma, const float* beta, float* m, float* v, float* s, float* X_norm,
+                    int batch_size, int seq_len, int embed_size);
 }
 
 #endif

@@ -13,7 +13,6 @@
 class Transformer
 {
 	//Parameters Shapes Sizes
-
 	int train;
 	int display;
 	int embed_size;
@@ -285,7 +284,7 @@ public:
 				float* wk_t = wk + block * (embed_size * embed_size);
 				float* wv_t = wv + block * (embed_size * embed_size);
 
-				Tensor::linear_projection(X, q_t, k_t, v_t, wq_t, wk_t, wv_t, batch_size, seq_len, embed_size);
+				Tensor::linear_projection(X, wq_t, wk_t, wv_t, q_t, k_t, v_t, batch_size, seq_len, embed_size);
 			}
 			break;
 		}

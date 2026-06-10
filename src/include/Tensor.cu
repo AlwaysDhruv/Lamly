@@ -95,7 +95,7 @@ namespace
         }
     }
 
-    __global__ void dot_product(float* v1, float* v2, int n)
+    __global__ void dot_product(float* v1, float* v2, int N)
     {
         int idx = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -341,10 +341,11 @@ namespace Tensor
         layernorm_kernel<<< (N + 255)/256, 256>>>(x, gamma, beta, m, v, s, X_norm, batch_size, seq_len, embed_size);
     }
 
-    void linear_projection(const float* x, const float* wq, const float* wk, const float* wv, float* q, float* k, float* v, int batch_size, int seq_len, int embed_size)
+    void linear_projection(const float* x, const float* wq, const float* wk, const float* wv,
+                            float* q, float* k, float* v, int batch_size, int seq_len, int embed_size)
     {
         dim3 threads(16, 16);
-        dim3 blocks(embed_size + 15 / 16, seq_len + 15 / 16, batch);
+        dim3 blocks((embed_size + 15) / 16, (seq_len + 15) / 16, batch_size);
 
         matmul_3d_2d<<<blocks, threads>>>(x, wq, q, batch_size, seq_len, embed_size);
         matmul_3d_2d<<<blocks, threads>>>(x, wk, k, batch_size, seq_len, embed_size);
