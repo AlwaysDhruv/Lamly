@@ -174,6 +174,46 @@ public:
 		}
 	}
 
+	void free()
+	{
+
+		cudaFree(l1_X);
+		cudaFree(l1_mean);
+		cudaFree(l1_var);
+		cudaFree(l1_std);
+		cudaFree(l1_X_norm);
+
+		cudaFree(l2_X);
+		cudaFree(l2_mean);
+		cudaFree(l2_var);
+		cudaFree(l2_std);
+		cudaFree(l2_X_norm);
+
+		cudaFree(q);
+		cudaFree(k);
+		cudaFree(v);
+
+		cudaFree(embed_mat);
+		cudaFree(pos_mat);
+
+		cudaFree(wq);
+		cudaFree(wk);
+		cudaFree(wv);
+		cudaFree(wo);
+		cudaFree(w1);
+		cudaFree(w2);
+		cudaFree(w_vocab);
+
+		cudaFree(gamma1);
+		cudaFree(beta1);
+
+		cudaFree(gamma2);
+		cudaFree(beta2);
+
+		cudaFree(final_gamma);
+		cudaFree(final_beta);
+	}
+	
 	void Transformers()
 	{
 		float* l1_X;
@@ -186,7 +226,11 @@ public:
 		float* l2_mean;
 		float* l2_var;
 		float* l2_std;
-		float* l2_X_STD;
+		float* l2_X_norm;
+
+		float* q;
+		float* k;
+		float* v;
 		
 		cudaMalloc(&l1_X, (batch_size * seq_len * embed_size * block_size) * sizeof(float));
 		cudaMalloc(&l1_mean, (batch_size * seq_len * block_size) * sizeof(float));
@@ -198,7 +242,11 @@ public:
 		cudaMalloc(&l2_mean, (batch_size * seq_len * block_size) * sizeof(float));
 		cudaMalloc(&l2_var, (batch_size * seq_len * block_size) * sizeof(float));
 		cudaMalloc(&l2_std, (batch_size * seq_len * block_size) * sizeof(float));
-		cudaMalloc(&l2_X_STD, (batch_size * seq_len * embed_size * block_size) * sizeof(float));
+		cudaMalloc(&l2_X_norm, (batch_size * seq_len * embed_size * block_size) * sizeof(float));
+
+		cudaMalloc(&q, (block_size * batch_size * seq_len * embed_size) * sizeof(float));
+		cudaMalloc(&k, (block_size * batch_size * seq_len * embed_size) * sizeof(float));
+		cudaMalloc(&v, (block_size * batch_size * seq_len * embed_size) * sizeof(float));
 
 		for(int batch = 0; batch < num_seq; batch+=batch_size)
 		{
@@ -221,15 +269,21 @@ public:
 				float* beta1_t = beta1 + block * (block_size * embed_size);
 
 				Tensor::layer_norm(X, gamma1_t, beta1_t, l1_mean_t, l1_var_t, l1_std_t, l1_X_norm_t, current_batch_size, seq_len, embed_size);
-				cudaMemcpy(l1_X + block * (batch_size * seq_len * embed_size), X, size * sizeof(float), cudaMemcpyDeviceToDevice);	
+				cudaMemcpy(l1_X + block * (batch_size * seq_len * embed_size), X, size * sizeof(float), cudaMemcpyDeviceToDevice);
+				
+				float* q_t = q + block * (batch_size * seq_len * embed_size);
+				float* k_t = k + block * (batch_size * seq_len * embed_size);
+				float* v_t = v + block * (batch_size * seq_len * embed_size);
+
+				float* wq_t = wq + block * (embed_size * embed_size);
+				float* wk_t = wk + block * (embed_size * embed_size);
+				float* wv_t = wv + block * (embed_size * embed_size);
+
+				Tensor::linear_projection(X, q_t, k_t, v_t, wq_t, wk_t, wv_t, batch_size, seq_len, embed_size);
 			}
 			break;
 		}
-		cudaFree(l1_X);
-		cudaFree(l1_mean);
-		cudaFree(l1_var);
-		cudaFree(l1_std);
-		cudaFree(l1_X_norm);
+		free();
 	}
 };
 

@@ -95,10 +95,20 @@ namespace
         }
     }
 
+    __global__ void dot_product(float* v1, float* v2, int n)
+    {
+        int idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+        if(idx < N)
+        {
+            v1[idx] += v1[idx] * v2[idx];
+        }
+    }
+
     __global__ void layernorm_kernel(
         float *value,
-        float *gamma,
-        float *beta,
+        const float *gamma,
+        const float *beta,
         float *mean_out,
         float *var_out,
         float *std_out,
@@ -161,7 +171,29 @@ namespace
                     + beta[k];
             }
         }
-    }    
+    }
+
+    __global__ void matmul_3d_2d(const float* a, const float* b, float* c, int batch_size, int seq_len, int embed_size)
+    {
+        int batch = blockIdx.z;
+        int rows = blockIdx.y * blockDim.y + threadIdx.y;
+        int cols = blockIdx.x * blockDim.x + threadIdx.x;
+        
+        if (batch < batch_size && rows < seq_len && cols < embed_size)
+        {
+            float sum = 0.0f;
+            
+            for (int i = 0; i < embed_size; ++i)
+            {
+                int idx1 = ((batch * seq_len + rows) * embed_size) + i;
+                int idx2 = i * embed_size * cols;
+                sum += a[idx1] * b[idx2];
+            }
+            int idx = ((batch * seq_len + rows) * embed_size) + cols;
+
+            c[idx] = sum;
+        }
+    }
 }
 
 namespace Tensor
@@ -301,12 +333,22 @@ namespace Tensor
         dropout_kernel<<<blocks, threads>>>(x, mask, probs, N);
     }
 
-    void layer_norm(float* x, float* gamma, float* beta, float* m, float* v, float* s, float* X_norm,
+    void layer_norm(float* x, const float* gamma, const float* beta, float* m, float* v, float* s, float* X_norm,
                     int batch_size, int seq_len, int embed_size)
     {
         int N = batch_size * seq_len;
 
         layernorm_kernel<<< (N + 255)/256, 256>>>(x, gamma, beta, m, v, s, X_norm, batch_size, seq_len, embed_size);
+    }
+
+    void linear_projection(const float* x, const float* wq, const float* wk, const float* wv, float* q, float* k, float* v, int batch_size, int seq_len, int embed_size)
+    {
+        dim3 threads(16, 16);
+        dim3 blocks(embed_size + 15 / 16, seq_len + 15 / 16, batch);
+
+        matmul_3d_2d<<<blocks, threads>>>(x, wq, q, batch_size, seq_len, embed_size);
+        matmul_3d_2d<<<blocks, threads>>>(x, wk, k, batch_size, seq_len, embed_size);
+        matmul_3d_2d<<<blocks, threads>>>(x, wv, v, batch_size, seq_len, embed_size);
     }
 }
 #endif
