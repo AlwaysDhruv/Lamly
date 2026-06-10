@@ -12,6 +12,8 @@
 
 class Transformer
 {
+	//Parameters Shapes Sizes
+
 	int train;
 	int display;
 	int embed_size;
@@ -31,10 +33,12 @@ class Transformer
 	float dropout_prob;
 	float learning_rate;
 
+	//Tokens
 	vector<long long> token_ids;
 	vector<vector<long long>> x;
 	vector<vector<long long>> y;
 
+	//Parameters - GPU
 	float* embed_mat;
 	float* pos_mat;
 
@@ -54,6 +58,24 @@ class Transformer
 
 	float* final_gamma;
 	float* final_beta;
+
+	//Caches For Backward - GPU
+	float* l1_X;
+	float* l1_mean;
+	float* l1_var;
+	float* l1_std;
+	float* l1_X_norm;
+
+	float* l2_X;
+	float* l2_mean;
+	float* l2_var;
+	float* l2_std;
+	float* l2_X_norm;
+
+	float* q;
+	float* k;
+	float* v;
+
 public:
 	
 	Transformer(vector<long long>& ids)
@@ -135,6 +157,22 @@ public:
 			Tensor::fill(final_beta, 0.0f, embed_size);
 
 			Tensor::destroy_rng();
+
+			cudaMalloc(&l1_X, (batch_size * seq_len * embed_size * block_size) * sizeof(float));
+			cudaMalloc(&l1_mean, (batch_size * seq_len * block_size) * sizeof(float));
+			cudaMalloc(&l1_var, (batch_size * seq_len * block_size) * sizeof(float));
+			cudaMalloc(&l1_std, (batch_size * seq_len * block_size) * sizeof(float));
+			cudaMalloc(&l1_X_norm, (batch_size * seq_len * embed_size * block_size) * sizeof(float));
+		
+			cudaMalloc(&l2_X, (batch_size * seq_len * embed_size * block_size) * sizeof(float));
+			cudaMalloc(&l2_mean, (batch_size * seq_len * block_size) * sizeof(float));
+			cudaMalloc(&l2_var, (batch_size * seq_len * block_size) * sizeof(float));
+			cudaMalloc(&l2_std, (batch_size * seq_len * block_size) * sizeof(float));
+			cudaMalloc(&l2_X_norm, (batch_size * seq_len * embed_size * block_size) * sizeof(float));
+
+			cudaMalloc(&q, (block_size * batch_size * seq_len * embed_size) * sizeof(float));
+			cudaMalloc(&k, (block_size * batch_size * seq_len * embed_size) * sizeof(float));
+			cudaMalloc(&v, (block_size * batch_size * seq_len * embed_size) * sizeof(float));
 			
 			cout << "Done....." << endl;
 		}
@@ -216,38 +254,6 @@ public:
 	
 	void Transformers()
 	{
-		float* l1_X;
-		float* l1_mean;
-		float* l1_var;
-		float* l1_std;
-		float* l1_X_norm;
-
-		float* l2_X;
-		float* l2_mean;
-		float* l2_var;
-		float* l2_std;
-		float* l2_X_norm;
-
-		float* q;
-		float* k;
-		float* v;
-		
-		cudaMalloc(&l1_X, (batch_size * seq_len * embed_size * block_size) * sizeof(float));
-		cudaMalloc(&l1_mean, (batch_size * seq_len * block_size) * sizeof(float));
-		cudaMalloc(&l1_var, (batch_size * seq_len * block_size) * sizeof(float));
-		cudaMalloc(&l1_std, (batch_size * seq_len * block_size) * sizeof(float));
-		cudaMalloc(&l1_X_norm, (batch_size * seq_len * embed_size * block_size) * sizeof(float));
-	
-		cudaMalloc(&l2_X, (batch_size * seq_len * embed_size * block_size) * sizeof(float));
-		cudaMalloc(&l2_mean, (batch_size * seq_len * block_size) * sizeof(float));
-		cudaMalloc(&l2_var, (batch_size * seq_len * block_size) * sizeof(float));
-		cudaMalloc(&l2_std, (batch_size * seq_len * block_size) * sizeof(float));
-		cudaMalloc(&l2_X_norm, (batch_size * seq_len * embed_size * block_size) * sizeof(float));
-
-		cudaMalloc(&q, (block_size * batch_size * seq_len * embed_size) * sizeof(float));
-		cudaMalloc(&k, (block_size * batch_size * seq_len * embed_size) * sizeof(float));
-		cudaMalloc(&v, (block_size * batch_size * seq_len * embed_size) * sizeof(float));
-
 		for(int batch = 0; batch < num_seq; batch+=batch_size)
 		{
 			size_t current_batch_size = num_seq < batch + batch_size ?  (num_seq - batch) : batch_size;
