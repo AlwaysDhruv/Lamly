@@ -78,7 +78,6 @@ protected:
 	float* v;
 
 public:
-	
 	Transformer(vector<long long>& ids)
 	{
 		mINI::INIFile file("../config.ini");
@@ -257,7 +256,6 @@ public:
 	
 	void Transformers()
 	{
-		GPT gpt;
 		for(int batch = 0; batch < num_seq; batch+=batch_size)
 		{
 			size_t current_batch_size = num_seq < batch + batch_size ?  (num_seq - batch) : batch_size;
