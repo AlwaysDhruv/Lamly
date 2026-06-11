@@ -2,9 +2,11 @@
 #include <string>
 #include <vector>
 #include "./include/BPE.hpp"
-#include "./include/Transformer.cuh"
+#include "./include/Transformer.hpp"
+#include "./include/Display.hpp"
 
 using namespace std;
+
 
 void save_tokens(
     const vector<long long>& token_ids,
@@ -44,23 +46,28 @@ vector<long long> load_tokens(
 }
 
 int main(int argc, char const *argv[])
-{   
-    cout << "Token Ids Imprting from tokens.txt....";
-    vector<long long> token_ids = load_tokens("../data/tokens.bin");
-    cout << "done with " << token_ids.size() << " ids....." << endl;
+{
+	Tokenization tk;
+	
+	//vector<string> tokens;
+    //cout << "Tokens IDs Importing......";
+	//vector<long long> token_ids = load_tokens("../data/tokens.bin");
+    //cout << "Done..." << endl;
 
-    // //tk.fit("../data/test.txt", 1000);
-    // cout << "Encoding starts for test.txt....";
-    
-    // tk.encoding("../data/test.txt", tokens, token_ids);
-    // save_tokens(token_ids, "tokens.bin");
-    // cout << "done with " << token_ids.size() << " ids....." << endl;
+    vector<long long> token_ids;
+    vector<string> tokens;
+	// //tk.fit("../data/test.txt", 1000);
+	
+    cout << "Encoding starts for test.txt....";
+	tk.encoding("../data/test2.txt", tokens, token_ids);
+	// save_tokens(token_ids, "tokens.bin");
+	cout << "done with " << token_ids.size() << " ids....." << endl;
 
-    GPT tr(token_ids);
+	GPT tr(token_ids);
 
-    tr.input_embedding();
-
-    tr.Transformers();
-    
-    return 0;
+	tr.input_embedding();
+	
+	tr.Transformers();
+	
+	return 0;
 }
