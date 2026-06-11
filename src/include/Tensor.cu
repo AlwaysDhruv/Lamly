@@ -367,6 +367,8 @@ namespace Tensor
 
             break;
         }
+
+        return wo;
     }
 }
 #endif
