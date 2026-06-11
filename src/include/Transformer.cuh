@@ -12,6 +12,8 @@
 
 class Transformer
 {
+
+protected:
 	//Parameters Shapes Sizes
 	int train;
 	int display;
@@ -177,7 +179,10 @@ public:
 		}
 		else cout << "config.ini Have Problem...." << endl;
 	}
-
+};
+class GPT : public Transformer
+{
+public:
 	void input_embedding()
 	{
 		vector<long long> token_x;
@@ -213,7 +218,6 @@ public:
 
 	void free()
 	{
-
 		cudaFree(l1_X);
 		cudaFree(l1_mean);
 		cudaFree(l1_var);
@@ -253,6 +257,7 @@ public:
 	
 	void Transformers()
 	{
+		GPT gpt;
 		for(int batch = 0; batch < num_seq; batch+=batch_size)
 		{
 			size_t current_batch_size = num_seq < batch + batch_size ?  (num_seq - batch) : batch_size;
@@ -285,6 +290,9 @@ public:
 				float* wv_t = wv + block * (embed_size * embed_size);
 
 				Tensor::linear_projection(X, wq_t, wk_t, wv_t, q_t, k_t, v_t, batch_size, seq_len, embed_size);
+				
+				float* wo_t = wo + block * (embed_size * embed_size);
+				float* att_score = Tensor::attension(q_t, k_t, v_t, wo, batch_size, seq_len, embed_size, head_size, head_dim);
 			}
 			break;
 		}

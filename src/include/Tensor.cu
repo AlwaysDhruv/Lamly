@@ -95,7 +95,7 @@ namespace
         }
     }
 
-    __global__ void dot_product(float* v1, float* v2, int N)
+    __global__ void dot_product(const float* v1, const float* v2, float* v3, int N)
     {
         int idx = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -350,6 +350,23 @@ namespace Tensor
         matmul_3d_2d<<<blocks, threads>>>(x, wq, q, batch_size, seq_len, embed_size);
         matmul_3d_2d<<<blocks, threads>>>(x, wk, k, batch_size, seq_len, embed_size);
         matmul_3d_2d<<<blocks, threads>>>(x, wv, v, batch_size, seq_len, embed_size);
+    }
+
+    float* attension(const float* q, const float* k, const float* v, const float* wo,
+                    int batch_size, int seq_len, int embed_size, int head_size, int head_dim)
+    {
+        for (int i = 0; i < batch_size; ++i)
+        {
+            float* q_t = q + (i * (seq_len * embed_size));
+            float* k_t = k + (i * (seq_len * embed_size));
+            float* v_t = v + (i * (seq_len * embed_size));
+
+            display(q_t, seq_len * embed_size);
+            display(k_t, seq_len * embed_size);
+            display(v_t, seq_len * embed_size);
+
+            break;
+        }
     }
 }
 #endif

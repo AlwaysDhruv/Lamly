@@ -46,6 +46,9 @@ namespace Tensor
 
     void layer_norm(float* x, const float* gamma, const float* beta, float* m, float* v, float* s, float* X_norm,
                     int batch_size, int seq_len, int embed_size);
+    
+    float* attension(const float* q, const float* k, const float* v, const float* wo,
+                    int batch_size, int seq_len, int embed_size, int head_size, int head_dim);    
 }
 
 #endif
