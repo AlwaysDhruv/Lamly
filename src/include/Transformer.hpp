@@ -12,6 +12,8 @@
 
 class Transformer
 {
+protected:
+	//Parameters Shapes Sizes	
 	int embed_size;
 	int vocab_size;
 	int seq_len;
@@ -31,6 +33,7 @@ class Transformer
 	float learning_rate;
 	int train;
 
+	//Tokens
 	vector<long long> token_ids;
 
 	vector<vector<float>> embed_mat;
@@ -40,6 +43,7 @@ class Transformer
 	vector<vector<long long>> Y;
 	vector<vector<long long>> TX;
 
+	//Parameters
 	vector<vector<float>> w_vocab;
 	vector<vector<vector<float>>> wq;
 	vector<vector<vector<float>>> wk;
@@ -124,7 +128,12 @@ public:
 		}
 		else cout << "config.ini Have Problem...." << endl;
 	}
+};
 
+class GPT : public Transformer
+{
+public:
+	
 	void input_embedding()
 	{
 		vector<long long> token_x;
@@ -205,8 +214,6 @@ public:
 					X.push_back(temp);
 				}
 
-				vector<vector<vector<float>>> X_input;
-
 				vector<vector<vector<vector<float>>>> l1_X;
 				vector<vector<vector<vector<float>>>> l1_X_STD;
 				vector<vector<vector<float>>> l1_mean;
@@ -266,8 +273,6 @@ public:
 
 				vector<vector<vector<float>>> input_dropout_mask;
 
-				X_input.reserve(current_batch_size);			
-
 				l1_X.reserve(current_batch_size);
 				l1_X_STD.reserve(current_batch_size);
 				l1_mean.reserve(current_batch_size);
@@ -317,7 +322,7 @@ public:
 				mlp_residual.reserve(current_batch_size);
 				
 				logits.reserve(current_batch_size);
-
+				
 				softmax_probs.reserve(current_batch_size);
 
 				d_logits.reserve(current_batch_size);
@@ -595,7 +600,6 @@ public:
 						float p = std::max(X_input2[lss][Y[batch + seq][lss]], 1e-9f);
 						loss += -log(p);
 					}
-					X_input.push_back(X_input2);
 
 					vector<vector<float>> gradient;
 					vector<long long> t_target_ids;
